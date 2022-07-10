@@ -4,8 +4,9 @@ import scipy as sp
 from scipy.stats import multivariate_normal
 from scipy.stats import norm, rv_histogram
 from scipy.interpolate import interp1d
-from scipy.integrate import simps
+from scipy.integrate import romb
 from colossus.cosmology import cosmology
+from mass_function import MassFunction
 
 
 h = 0.6726
@@ -30,7 +31,6 @@ scatter_SZ = 0.152
 alpha_Mwl = 1
 pi_Mwl = 0
 scatter_Mwl = 0.5
-
 
 class MonteCarloObservables(object):
     
@@ -72,15 +72,7 @@ class MonteCarloObservables(object):
     
         mu_guess = (mu_lam/(sig_lam)**2 + mu_SZ/(sig_SZ)**2) / (1/sig_lam**2 + 1/sig_SZ**2)
 
-        if correction == True:
-            beta = self.mf_slope_interp(mu_guess)
-            beta[mu_guess < 30.3] = 1.06
-        else:
-            beta = np.zeros(np.shape(mu_guess))
-            self.r = 0
-        
-        # print("mu_given_SZ_lam, beta:", mu_guess, beta)
-        
+        beta = self.mf_slope_interp(mu_guess)
         
         mu_given_lam_SZ_num = (alpha_lam/self.scatter_lam**2)*(lam-pi_lam) + (alpha_SZ/self.scatter_SZ**2)*(SZ-pi_SZ) - beta
         mu_given_lam_SZ_den = (alpha_lam/self.scatter_lam)**2 + (alpha_SZ/self.scatter_SZ)**2
@@ -89,29 +81,32 @@ class MonteCarloObservables(object):
         mu_given_lam = (lam - pi_lam)/alpha_lam
         mu_given_SZ = (SZ - pi_SZ)/alpha_SZ
 
-        third_term_num = self.r * self.scatter_Mwl * (self.scatter_lam/alpha_lam) * (mu_given_lam - mu_given_SZ + beta*(self.scatter_SZ/alpha_SZ)**2)
-        third_term_den = (self.scatter_SZ/alpha_SZ)**2 + (self.scatter_lam/alpha_lam)**2
+        if correction is True:
+            third_term_num = self.r * self.scatter_Mwl * (self.scatter_lam/alpha_lam) * (mu_given_lam - mu_given_SZ + beta*(self.scatter_SZ/alpha_SZ)**2)
+            third_term_den = (self.scatter_SZ/alpha_SZ)**2 + (self.scatter_lam/alpha_lam)**2
+            third_term = third_term_num/third_term_den
+        else:
+            third_term = 0
 
-        third_term = third_term_num/third_term_den
-
-        TH_Mwl_given_lambda_SZ = pi_Mwl + alpha_Mwl*mu_given_lam_SZ + third_term
-        # TH_Mwl_given_lambda_SZ = third_term
+        TH_Mwl_given_lambda_SZ = pi_Mwl + alpha_Mwl*mu_given_lam_SZ + third_term 
 
         return (TH_Mwl_given_lambda_SZ)
     
     
-    def mean_Mwl_in_bin(self, lam1, lam2, SZ1, SZ2):
+    def mean_Mwl_in_bin(self, lam1, lam2, SZ1, SZ2,correction):
         
         norm_factor_lam = self.P_lam.cdf(lam2) - self.P_lam.cdf(lam1)
         norm_factor_SZ = self.P_SZ.cdf(SZ2) - self.P_SZ.cdf(SZ1)
                 
-        lam_range = np.linspace(lam1,lam2,10000)
-        SZ_range = np.linspace(SZ1,SZ2,10000)
+        lam_range,lam_step = np.linspace(lam1,lam2,2**15+1,retstep=True)
+        SZ_range,SZ_step = np.linspace(SZ1,SZ2,2**15+1,retstep=True)
         
         
-        mesh = self.TH_calculate_mean_Mwl_given_lam_SZ(lam_range.reshape(-1,1),SZ_range.reshape(1,-1),correction=True) * self.P_lam.pdf(lam_range.reshape(-1,1))/norm_factor_lam * self.P_SZ.pdf(SZ_range.reshape(1,-1))/norm_factor_SZ
+        mesh = self.TH_calculate_mean_Mwl_given_lam_SZ(lam_range.reshape(-1,1),SZ_range.reshape(1,-1),correction=correction) * self.P_lam.pdf(lam_range.reshape(-1,1))/norm_factor_lam * self.P_SZ.pdf(SZ_range.reshape(1,-1))/norm_factor_SZ
                 
-        integral = simps([simps(SZ,SZ_range) for SZ in mesh],lam_range)
+        integral = romb([romb(SZ,SZ_step) for SZ in mesh],lam_step)
+
+        print(integral)
         
         return integral
 
@@ -121,8 +116,8 @@ class MonteCarloObservables(object):
         # lnlam_bins = pd.qcut(self.lnlam,nbins,retbins=True)[1]
         # lnSZ_bins = pd.qcut(self.lnSZ,nbins,retbins=True)[1]
         
-        lnlam_bins = np.log(np.array([20,40,45,50]))
-        lnSZ_bins = np.log(np.array([0.1,1,2,20]))
+        lnlam_bins = np.log(np.array([20,30,40]))
+        lnSZ_bins = np.log(np.array([0.1,5,10]))
 
                 
         diff_array = np.empty([nbins-1])
@@ -153,16 +148,11 @@ class MonteCarloObservables(object):
                 total_mask = SZ_mask & lam_mask  #combine the richness and SZ mask
                 count_array[i][j] = np.sum(total_mask)
 
-                if np.sum(total_mask) != 0:
-                    
-                    TH_Mwl_given_lam_SZ = self.mean_Mwl_in_bin(lam_left_edge, lam_right_edge, SZ_left_edge,SZ_right_edge)
+                
+                TH_Mwl_given_lam_SZ = self.mean_Mwl_in_bin(lam_left_edge, lam_right_edge, SZ_left_edge,SZ_right_edge,correction)
 
-                    diff = (TH_Mwl_given_lam_SZ - np.mean(self.lnMwl[total_mask]))
-
-                    diff_array[i][j] = diff
-                    
-                else:
-                    diff_array[i][j] = 0
+                diff = (TH_Mwl_given_lam_SZ - np.mean(self.lnMwl[total_mask]))
+                diff_array[i][j] = diff
 
                 # print("----------------------------------------------------------")
 
