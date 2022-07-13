@@ -140,7 +140,7 @@ class MonteCarloObservables(object):
 
         return (theory_mwl_given_lambda_SZ)
 
-    def mean_mwl_in_bin(self, lam1, lam2, SZ1, SZ2, correction):
+    def mean_mwl_in_bin(self, lam1, lam2, sz1, sz2, correction):
         """Calculate the precise lensing mass given lambda and SZ bin
 
         Args:
@@ -157,25 +157,37 @@ class MonteCarloObservables(object):
         # norm_factor_lam = self.P_lam.cdf(lam2) - self.P_lam.cdf(lam1)
         # norm_factor_SZ = self.P_SZ.cdf(SZ2) - self.P_SZ.cdf(SZ1)
 
+        # norm_factor_lam = self.lam_kde.integrate_box_1d(lam1, lam2)
+        # norm_factor_sz = self.sz_kde.integrate_box_1d(sz1, sz2)
+
         norm_factor_lam = 1
-        norm_factor_SZ = 1
+        norm_factor_sz = 1
 
         print("The normalization factors are:", norm_factor_lam,
-              norm_factor_SZ)
+              norm_factor_sz)
 
-        lam_range, lam_step = np.linspace(lam1, lam2, 100, retstep=True)
-        sz_range, sz_step = np.linspace(SZ1, SZ2, 100, retstep=True)
+        lam_range, lam_step = np.linspace(lam1, lam2, 1000, retstep=True)
+        sz_range, sz_step = np.linspace(sz1, sz2, 1000, retstep=True)
+
+        # lam_p = self.lam_kde.pdf(lam_range)
+        # sz_p = self.sz_kde.pdf(sz_range)
+
+        lam_p = self.lam_pdf(lam_range)
+        sz_p = self.sz_pdf(sz_range)
 
         integral = 0
 
-        for lam in tqdm(lam_range):
-            for sz in sz_range:
+        for i, lam in tqdm(enumerate(lam_range)):
+            for j, sz in enumerate(sz_range):
                 # print(lam, sz)
-                p_lam = lam_step / (lam2 - lam1)
-                p_sz = sz_step / (lam2 - lam1)
+                p_lam = lam_step * lam_p[i]
+                p_sz = sz_step * lam_p[j]
                 mean_mwl = self.theory_calculate_mean_mwl_given_lam_sz(
                     lam, sz, correction=correction)
                 integral += p_lam * p_sz * mean_mwl
+
+        integral /= norm_factor_lam
+        integral /= norm_factor_sz
 
         # mesh = self.theory_calculate_mean_mwl_given_lam_sz(
         #     lam_range.reshape(-1, 1),
@@ -196,8 +208,6 @@ class MonteCarloObservables(object):
         # integral = romb([romb(SZ, SZ_step) for SZ in mesh], lam_step)
         # integral = simps([simps(SZ, SZ_range) for SZ in mesh], lam_range)
 
-        print(integral)
-
         return integral
 
     def mc_calculate_mean_mwl_given_lam_sz(self, nbins, correction, lam1, lam2,
@@ -215,6 +225,7 @@ class MonteCarloObservables(object):
         lnlam_bins = np.log(np.array([lam1, lam2]))
         lnSZ_bins = np.log(np.array([sz1, sz2]))
 
+        #pdf from scipy kde
         # def get_pdf_in_bin(data, left_edge, right_edge):
         #     data_in_bin = np.ma.masked_outside(
         #         data, left_edge, right_edge).compressed()[:, np.newaxis]
@@ -228,18 +239,58 @@ class MonteCarloObservables(object):
         #         x_values = x_values[:, np.newaixs]
         #         return (np.exp(kde.score_samples(x_values)))
 
+        # #pdf from rv_histogram
+        # def get_pdf_in_bin(data, left_edge, right_edge):
+        #     data_in_bin = np.ma.masked_outside(data, left_edge,
+        #                                        right_edge).compressed()
+        #     rv = sp.stats.rv_histogram(np.histogram(data_in_bin, bins=20))
+        #     plt.hist(data_in_bin)
+        #     plt.show()
+        #     plt.plot(
+        #         np.linspace(data_in_bin.min(), data_in_bin.max(), 10000),
+        #         rv.pdf(np.linspace(data_in_bin.min(), data_in_bin.max(),
+        #                            10000)))
+        #     plt.show()
+        #     return (rv.pdf)
+
+        #pdf from interpolating histogram
         def get_pdf_in_bin(data, left_edge, right_edge):
             data_in_bin = np.ma.masked_outside(data, left_edge,
                                                right_edge).compressed()
-            rv = sp.stats.rv_histogram(np.histogram(data_in_bin, bins=20))
-            plt.hist(data_in_bin)
+            counts, bin_edges = np.histogram(data_in_bin,
+                                             density=True,
+                                             bins=20)
+            bin_mid = 0.5 * (bin_edges[1:] + bin_edges[:-1])
+            pdf = interp1d(bin_mid,
+                           counts,
+                           bounds_error=False,
+                           fill_value="extrapolate")
+            plt.hist(data_in_bin, bins=20)
             plt.show()
-            plt.plot(data_in_bin, rv.pdf(data_in_bin))
+            plt.plot(np.linspace(left_edge, right_edge, 1000),
+                     pdf(np.linspace(left_edge, right_edge, 1000)))
             plt.show()
-            return (rv.pdf)
+            return (pdf)
 
         self.lam_pdf = get_pdf_in_bin(self.lnlam, np.log(lam1), np.log(lam2))
-        self.sz_pdf = get_pdf_in_bin(self.lnSZ, np.log(sz1), np.log(sz2))
+        self.sz_pdf = get_pdf_in_bin(self.lnlam, np.log(sz1), np.log(sz2))
+
+        #pdf from kde estimate
+        # def get_pdf_in_bin(data, left_edge, right_edge):
+        #     data_in_bin = np.ma.masked_outside(data, left_edge - 0.1,
+        #                                        right_edge + 0.1).compressed()
+
+        #     kde = sp.stats.gaussian_kde(data_in_bin)
+
+        #     plt.hist(data_in_bin)
+        #     plt.show()
+        #     plt.plot(np.linspace(left_edge, right_edge, 1000),
+        #              kde.pdf(np.linspace(left_edge, right_edge, 1000)))
+        #     plt.show()
+        #     return (kde)
+
+        # self.lam_kde = get_pdf_in_bin(self.lnlam, np.log(lam1), np.log(lam2))
+        # self.sz_kde = get_pdf_in_bin(self.lnSZ, np.log(sz1), np.log(sz2))
 
         # lnlam_bins = pd.qcut(self.lnlam,nbins,retbins=True)[1]
         # lnSZ_bins = pd.qcut(self.lnSZ,nbins,retbins=True)[1]
