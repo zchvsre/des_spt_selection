@@ -7,6 +7,8 @@ from scipy.interpolate import interp1d
 from scipy.integrate import romb, simps
 from colossus.cosmology import cosmology
 import matplotlib.pyplot as plt
+from sklearn.neighbors import KernelDensity
+from tqdm import tqdm
 
 h = 0.6726
 params = {
@@ -161,15 +163,26 @@ class MonteCarloObservables(object):
         print("The normalization factors are:", norm_factor_lam,
               norm_factor_SZ)
 
-        lam_range, lam_step = np.linspace(lam1, lam2, 1 + 2**14, retstep=True)
-        SZ_range, SZ_step = np.linspace(SZ1, SZ2, 1 + 2**14, retstep=True)
+        lam_range, lam_step = np.linspace(lam1, lam2, 100, retstep=True)
+        sz_range, sz_step = np.linspace(SZ1, SZ2, 100, retstep=True)
 
-        mesh = self.theory_calculate_mean_mwl_given_lam_sz(
-            lam_range.reshape(-1, 1),
-            SZ_range.reshape(1, -1),
-            correction=correction) * self.P_lam(
-                lam_range.reshape(-1, 1)) / norm_factor_lam * self.P_SZ(
-                    SZ_range.reshape(1, -1)) / norm_factor_SZ
+        integral = 0
+
+        for lam in tqdm(lam_range):
+            for sz in sz_range:
+                # print(lam, sz)
+                p_lam = lam_step / (lam2 - lam1)
+                p_sz = sz_step / (lam2 - lam1)
+                mean_mwl = self.theory_calculate_mean_mwl_given_lam_sz(
+                    lam, sz, correction=correction)
+                integral += p_lam * p_sz * mean_mwl
+
+        # mesh = self.theory_calculate_mean_mwl_given_lam_sz(
+        #     lam_range.reshape(-1, 1),
+        #     SZ_range.reshape(1, -1),
+        #     correction=correction) * self.P_lam(
+        #         lam_range.reshape(-1, 1)) / norm_factor_lam * self.P_SZ(
+        #             SZ_range.reshape(1, -1)) / norm_factor_SZ
 
         # mesh = self.theory_calculate_mean_mwl_given_lam_sz(
         #     lam_range.reshape(-1, 1),
@@ -181,8 +194,7 @@ class MonteCarloObservables(object):
         #     SZ_range.reshape(1, -1))
 
         # integral = romb([romb(SZ, SZ_step) for SZ in mesh], lam_step)
-        # integral = romb([romb(SZ, SZ_step) for SZ in mesh], lam_step)
-        integral = simps([simps(SZ, SZ_range) for SZ in mesh], lam_range)
+        # integral = simps([simps(SZ, SZ_range) for SZ in mesh], lam_range)
 
         print(integral)
 
@@ -203,29 +215,31 @@ class MonteCarloObservables(object):
         lnlam_bins = np.log(np.array([lam1, lam2]))
         lnSZ_bins = np.log(np.array([sz1, sz2]))
 
-        def get_pdf_in_bin(data, left_edge, right_edge, bin_number=10):
-            counts, bins = np.histogram(data,
-                                        range=(left_edge, right_edge),
-                                        bins=bin_number)
-            density = counts / float(np.sum(counts))
-            bin_mid = 0.5 * (bins[0:-1] + bins[1:])
+        # def get_pdf_in_bin(data, left_edge, right_edge):
+        #     data_in_bin = np.ma.masked_outside(
+        #         data, left_edge, right_edge).compressed()[:, np.newaxis]
+        #     x_values = np.linspace(np.min(data_in_bin),
+        #                            np.max(data_in_bin))[:, np.newaxis]
+        #     kde = KernelDensity(kernel="gaussian",
+        #                         bandwidth=0.001).fit(data_in_bin)
+        #     log_den = kde.score_samples(x_values)
 
-            pdf = interp1d(bin_mid,
-                           density,
-                           bounds_error=False,
-                           fill_value="extrapolate")
-            plt.plot(bin_mid, pdf(bin_mid))
+        #     def pdf(x_values):
+        #         x_values = x_values[:, np.newaixs]
+        #         return (np.exp(kde.score_samples(x_values)))
+
+        def get_pdf_in_bin(data, left_edge, right_edge):
+            data_in_bin = np.ma.masked_outside(data, left_edge,
+                                               right_edge).compressed()
+            rv = sp.stats.rv_histogram(np.histogram(data_in_bin, bins=20))
+            plt.hist(data_in_bin)
             plt.show()
-            return (pdf)
+            plt.plot(data_in_bin, rv.pdf(data_in_bin))
+            plt.show()
+            return (rv.pdf)
 
-        self.P_lam = get_pdf_in_bin(self.lnlam,
-                                    np.log(lam1),
-                                    np.log(lam2),
-                                    bin_number=10)
-        self.P_SZ = get_pdf_in_bin(self.lnSZ,
-                                   np.log(sz1),
-                                   np.log(sz2),
-                                   bin_number=50)
+        self.lam_pdf = get_pdf_in_bin(self.lnlam, np.log(lam1), np.log(lam2))
+        self.sz_pdf = get_pdf_in_bin(self.lnSZ, np.log(sz1), np.log(sz2))
 
         # lnlam_bins = pd.qcut(self.lnlam,nbins,retbins=True)[1]
         # lnSZ_bins = pd.qcut(self.lnSZ,nbins,retbins=True)[1]
@@ -264,12 +278,14 @@ class MonteCarloObservables(object):
                 print("Lam bounds are", lam_left_edge, lam_right_edge)
                 print("SZ bounds are", SZ_left_edge, SZ_right_edge)
 
-                theory_mwl_given_lam_SZ = self.mean_mwl_in_bin(
+                theory_mwl_given_lam_sz = self.mean_mwl_in_bin(
                     lam_left_edge, lam_right_edge, SZ_left_edge, SZ_right_edge,
                     correction)
+                mc_mean_mwl = np.mean(self.lnMwl[total_mask])
 
-                diff = (theory_mwl_given_lam_SZ -
-                        np.mean(self.lnMwl[total_mask]))
+                print(f"Theory:{theory_mwl_given_lam_sz} MC:{mc_mean_mwl}")
+
+                diff = (theory_mwl_given_lam_sz - mc_mean_mwl)
                 diff_array[i][j] = diff
 
         return (lam_array, SZ_array, diff_array, count_array)
