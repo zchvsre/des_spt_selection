@@ -181,8 +181,6 @@ class MonteCarloObservables(object):
         print("The normalization factors are:", norm_factor_lam,
               norm_factor_sz)
 
-        NSTEPS = 100
-
         lam_range, lam_step = np.linspace(lam1, lam2, NSTEPS, retstep=True)
         sz_range, sz_step = np.linspace(sz1, sz2, NSTEPS, retstep=True)
 
@@ -194,10 +192,10 @@ class MonteCarloObservables(object):
 
         print("The number of out of bound points are", np.sum(lam_p == 0),
               np.sum(sz_p == 0))
-        lam_p[0] = lam_p[1]
-        lam_p[-1] = lam_p[-2]
-        sz_p[0] = sz_p[1]
-        sz_p[-1] = sz_p[-2]
+        lam_p[0] = (lam_p[1] - lam_p[2]) + lam_p[1]
+        lam_p[-1] = (lam_p[-2] - lam_p[-3]) + lam_p[-2]
+        sz_p[0] = (sz_p[1] - sz_p[2]) + sz_p[1]
+        sz_p[-1] = (sz_p[-2] - sz_p[-3]) + sz_p[-2]
         print("The number of out of bound points are", np.sum(lam_p == 0),
               np.sum(sz_p == 0))
 
@@ -252,7 +250,7 @@ class MonteCarloObservables(object):
         return integral
 
     def mc_calculate_mean_mwl_given_lam_sz(self, nbins, correction, lam1, lam2,
-                                           sz1, sz2):
+                                           sz1, sz2, NSTEPS):
         """Calculate the mean lensing mass given lambda and SZ in Monte Carlo.
 
         Args:
@@ -379,7 +377,7 @@ class MonteCarloObservables(object):
 
                 theory_mwl_given_lam_sz = self.mean_mwl_in_bin(
                     lam_left_edge, lam_right_edge, SZ_left_edge, SZ_right_edge,
-                    correction)
+                    correction, NSTEPS)
                 mc_mean_mwl = np.mean(self.lnMwl[total_mask])
 
                 print(f"Theory:{theory_mwl_given_lam_sz} MC:{mc_mean_mwl}")
