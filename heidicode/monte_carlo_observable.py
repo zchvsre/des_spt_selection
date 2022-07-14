@@ -80,21 +80,33 @@ class MonteCarloObservables(object):
         self.lnMwl = lnMwl_mean + scatter_Mwl * y
         self.lnSZ = lnSZ_mean + scatter_SZ * z
 
+        plt.hist(self.lnlam, bins=20)
+        plt.title("Histogram of lnlam")
+        plt.show()
+
+        plt.hist(self.lnMwl, bins=20)
+        plt.title("Histogram of lnMwl")
+        plt.show()
+
+        plt.hist(self.lnSZ, bins=20)
+        plt.title("Histogram of lnMwl")
+        plt.show()
+
         self.mf_slope_interp = mf_slope_interp
 
-        multiplier = 1000
-        rv = mv.rvs(size=nh * multiplier)
-        x = rv[:, 0]
-        y = rv[:, 1]
+#         multiplier = 1000
+#         rv = mv.rvs(size=nh * multiplier)
+#         x = rv[:, 0]
+#         y = rv[:, 1]
 
-        gauss = norm(0, 1)
-        z = gauss.rvs(size=nh * multiplier)
+#         gauss = norm(0, 1)
+#         z = gauss.rvs(size=nh * multiplier)
 
-        self.lnlam_for_pdf = np.repeat(lnlam_mean,
-                                       multiplier) + scatter_lam * x
-        self.lnMwl_for_pdf = np.repeat(lnMwl_mean,
-                                       multiplier) + scatter_Mwl * y
-        self.lnSZ_for_pdf = np.repeat(lnSZ_mean, multiplier) + scatter_SZ * z
+#         self.lnlam_for_pdf = np.repeat(lnlam_mean,
+#                                        multiplier) + scatter_lam * x
+#         self.lnMwl_for_pdf = np.repeat(lnMwl_mean,
+#                                        multiplier) + scatter_Mwl * y
+#         self.lnSZ_for_pdf = np.repeat(lnSZ_mean, multiplier) + scatter_SZ * z
 
         # self.P_lam = rv_histogram(
         #     np.histogram(self.lnlam,
@@ -126,8 +138,11 @@ class MonteCarloObservables(object):
 
         mu_guess = (mu_lam / (sig_lam)**2 + mu_SZ /
                     (sig_SZ)**2) / (1 / sig_lam**2 + 1 / sig_SZ**2)
-
-        beta = self.mf_slope_interp(mu_guess)
+        if mu_guess <= 32:
+            beta = self.mf_slope_interp(mu_guess)
+        else:
+            beta = 1.7
+        # print("beta", beta)
 
         mu_given_lam_SZ_num = (alpha_lam / self.scatter_lam**2) * (
             lam - pi_lam) + (alpha_SZ / self.scatter_SZ**2) * (SZ -
@@ -155,7 +170,7 @@ class MonteCarloObservables(object):
 
         return (theory_mwl_given_lambda_SZ)
 
-    def mean_mwl_in_bin(self, lam1, lam2, sz1, sz2, correction):
+    def mean_mwl_in_bin(self, lam1, lam2, sz1, sz2, correction, NSTEPS):
         """Calculate the precise lensing mass given lambda and SZ bin
 
         Args:
@@ -175,12 +190,6 @@ class MonteCarloObservables(object):
         # norm_factor_lam = self.lam_kde.integrate_box_1d(lam1, lam2)
         # norm_factor_sz = self.sz_kde.integrate_box_1d(sz1, sz2)
 
-        norm_factor_lam = 1
-        norm_factor_sz = 1
-
-        print("The normalization factors are:", norm_factor_lam,
-              norm_factor_sz)
-
         lam_range, lam_step = np.linspace(lam1, lam2, NSTEPS, retstep=True)
         sz_range, sz_step = np.linspace(sz1, sz2, NSTEPS, retstep=True)
 
@@ -198,6 +207,12 @@ class MonteCarloObservables(object):
         sz_p[-1] = (sz_p[-2] - sz_p[-3]) + sz_p[-2]
         print("The number of out of bound points are", np.sum(lam_p == 0),
               np.sum(sz_p == 0))
+
+        norm_factor_lam = np.sum(lam_p) * lam_step
+        norm_factor_sz = np.sum(sz_p) * sz_step
+
+        print("The normalization factors are:", norm_factor_lam,
+              norm_factor_sz)
 
         plt.plot(lam_range, lam_p)
         plt.title("lam PDF to be put in the integral")
@@ -225,8 +240,10 @@ class MonteCarloObservables(object):
                     lam, sz, correction=correction)
                 integral += p_lam * p_sz * mean_mwl
 
+        print("Integral before renormalization", integral)
         integral /= norm_factor_lam
         integral /= norm_factor_sz
+        print("Integral after renormalization", integral)
 
         # mesh = self.theory_calculate_mean_mwl_given_lam_sz(
         #     lam_range.reshape(-1, 1),
@@ -278,51 +295,54 @@ class MonteCarloObservables(object):
         #         x_values = x_values[:, np.newaixs]
         #         return (np.exp(kde.score_samples(x_values)))
 
-        #pdf from rv_histogram
+        # pdf from rv_histogram
+        # def get_pdf_in_bin(data, left_edge, right_edge):
 
+        #     data_in_bin = np.ma.masked_outside(data, left_edge,
+        #                                        right_edge).compressed()
+        #     rv = sp.stats.rv_histogram(np.histogram(data_in_bin, bins=500))
+        #     plt.hist(data_in_bin)
+        #     plt.title("Histogram of Observable")
+        #     plt.show()
+        #     plt.plot(
+        #         np.linspace(data_in_bin.min(), data_in_bin.max(), 10000),
+        #         rv.pdf(np.linspace(data_in_bin.min(), data_in_bin.max(),
+        #                            10000)))
+        #     plt.title("PDF Generated from the Histogram")
+        #     plt.show()
+        #     # return (rv.pdf)
+        #     return (rv.pdf)
+
+        # pdf from interpolating histogram
         def get_pdf_in_bin(data, left_edge, right_edge):
-
             data_in_bin = np.ma.masked_outside(data, left_edge,
                                                right_edge).compressed()
-            rv = sp.stats.rv_histogram(np.histogram(data_in_bin, bins=500))
-            plt.hist(data_in_bin)
+            counts, bin_edges = np.histogram(data_in_bin,
+                                             density=True,
+                                             bins=10)
+            bin_mid = 0.5 * (bin_edges[1:] + bin_edges[:-1])
+            pdf = interp1d(bin_mid,
+                           counts,
+                           bounds_error=False,
+                           fill_value="extrapolate")
+            plt.hist(data_in_bin, bins=20)
+            plt.title("Histogram for Interpolation")
             plt.show()
-            plt.plot(
-                np.linspace(data_in_bin.min(), data_in_bin.max(), 10000),
-                rv.pdf(np.linspace(data_in_bin.min(), data_in_bin.max(),
-                                   10000)))
+            plt.plot(np.linspace(left_edge, right_edge, 1000),
+                     pdf(np.linspace(left_edge, right_edge, 1000)))
+            plt.title("PDF from interpolation")
             plt.show()
-            # return (rv.pdf)
-            return (rv.pdf)
+            return (pdf)
 
-        #pdf from interpolating histogram
+        self.lam_pdf = get_pdf_in_bin(self.lnlam, np.log(lam1),
+                                      np.log(lam2))
+        self.sz_pdf = get_pdf_in_bin(self.lnSZ, np.log(sz1),
+                                     np.log(sz2))
+
+        # pdf from kde estimate
         # def get_pdf_in_bin(data, left_edge, right_edge):
         #     data_in_bin = np.ma.masked_outside(data, left_edge,
         #                                        right_edge).compressed()
-        #     counts, bin_edges = np.histogram(data_in_bin,
-        #                                      density=True,
-        #                                      bins=10)
-        #     bin_mid = 0.5 * (bin_edges[1:] + bin_edges[:-1])
-        #     pdf = interp1d(bin_mid,
-        #                    counts,
-        #                    bounds_error=False,
-        #                    fill_value="extrapolate")
-        #     plt.hist(data_in_bin, bins=20)
-        #     plt.show()
-        #     plt.plot(np.linspace(left_edge, right_edge, 1000),
-        #              pdf(np.linspace(left_edge, right_edge, 1000)))
-        #     plt.show()
-        #     return (pdf)
-
-        self.lam_pdf = get_pdf_in_bin(self.lnlam_for_pdf, np.log(lam1),
-                                      np.log(lam2))
-        self.sz_pdf = get_pdf_in_bin(self.lnSZ_for_pdf, np.log(sz1),
-                                     np.log(sz2))
-
-        #pdf from kde estimate
-        # def get_pdf_in_bin(data, left_edge, right_edge):
-        #     data_in_bin = np.ma.masked_outside(data, left_edge - 0.1,
-        #                                        right_edge + 0.1).compressed()
 
         #     kde = sp.stats.gaussian_kde(data_in_bin)
 
@@ -332,9 +352,6 @@ class MonteCarloObservables(object):
         #              kde.pdf(np.linspace(left_edge, right_edge, 1000)))
         #     plt.show()
         #     return (kde)
-
-        # self.lam_kde = get_pdf_in_bin(self.lnlam, np.log(lam1), np.log(lam2))
-        # self.sz_kde = get_pdf_in_bin(self.lnSZ, np.log(sz1), np.log(sz2))
 
         # lnlam_bins = pd.qcut(self.lnlam,nbins,retbins=True)[1]
         # lnSZ_bins = pd.qcut(self.lnSZ,nbins,retbins=True)[1]
