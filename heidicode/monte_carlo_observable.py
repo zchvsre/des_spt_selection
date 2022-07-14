@@ -82,16 +82,19 @@ class MonteCarloObservables(object):
 
         self.mf_slope_interp = mf_slope_interp
 
-        rv = mv.rvs(size=nh * 100)
+        multiplier = 1000
+        rv = mv.rvs(size=nh * multiplier)
         x = rv[:, 0]
         y = rv[:, 1]
 
         gauss = norm(0, 1)
-        z = gauss.rvs(size=nh * 100)
+        z = gauss.rvs(size=nh * multiplier)
 
-        self.lnlam_for_pdf = np.repeat(lnlam_mean, 100) + scatter_lam * x
-        self.lnMwl_for_pdf = np.repeat(lnMwl_mean, 100) + scatter_Mwl * y
-        self.lnSZ_for_pdf = np.repeat(lnSZ_mean, 100) + scatter_SZ * z
+        self.lnlam_for_pdf = np.repeat(lnlam_mean,
+                                       multiplier) + scatter_lam * x
+        self.lnMwl_for_pdf = np.repeat(lnMwl_mean,
+                                       multiplier) + scatter_Mwl * y
+        self.lnSZ_for_pdf = np.repeat(lnSZ_mean, multiplier) + scatter_SZ * z
 
         # self.P_lam = rv_histogram(
         #     np.histogram(self.lnlam,
@@ -178,8 +181,10 @@ class MonteCarloObservables(object):
         print("The normalization factors are:", norm_factor_lam,
               norm_factor_sz)
 
-        lam_range, lam_step = np.linspace(lam1, lam2, 5000, retstep=True)
-        sz_range, sz_step = np.linspace(sz1, sz2, 5000, retstep=True)
+        NSTEPS = 100
+
+        lam_range, lam_step = np.linspace(lam1, lam2, NSTEPS, retstep=True)
+        sz_range, sz_step = np.linspace(sz1, sz2, NSTEPS, retstep=True)
 
         # lam_p = self.lam_kde.pdf(lam_range)
         # sz_p = self.sz_kde.pdf(sz_range)
@@ -187,6 +192,22 @@ class MonteCarloObservables(object):
         lam_p = self.lam_pdf(lam_range)
         sz_p = self.sz_pdf(sz_range)
 
+        print("The number of out of bound points are", np.sum(lam_p == 0),
+              np.sum(sz_p == 0))
+        lam_p[0] = lam_p[1]
+        lam_p[-1] = lam_p[-2]
+        sz_p[0] = sz_p[1]
+        sz_p[-1] = sz_p[-2]
+        print("The number of out of bound points are", np.sum(lam_p == 0),
+              np.sum(sz_p == 0))
+
+        plt.plot(lam_range, lam_p)
+        plt.title("lam PDF to be put in the integral")
+        plt.show()
+
+        plt.plot(sz_range, sz_p)
+        plt.title("sz PDF to be put in the integral")
+        plt.show()
         # lam_p_smooth = scipy.signal.savgol_filter(lam_p, 5, 1)
         # sz_p_smooth = scipy.signal.savgol_filter(sz_p, 5, 1)
 
@@ -265,7 +286,7 @@ class MonteCarloObservables(object):
 
             data_in_bin = np.ma.masked_outside(data, left_edge,
                                                right_edge).compressed()
-            rv = sp.stats.rv_histogram(np.histogram(data_in_bin, bins=200))
+            rv = sp.stats.rv_histogram(np.histogram(data_in_bin, bins=500))
             plt.hist(data_in_bin)
             plt.show()
             plt.plot(
@@ -351,8 +372,10 @@ class MonteCarloObservables(object):
                 total_mask = SZ_mask & lam_mask  #combine the richness and SZ mask
                 count_array[i][j] = np.sum(total_mask)
 
-                print("Lam bounds are", lam_left_edge, lam_right_edge)
-                print("SZ bounds are", SZ_left_edge, SZ_right_edge)
+                print("Lam bounds are", np.exp(lam_left_edge),
+                      np.exp(lam_right_edge))
+                print("SZ bounds are", np.exp(SZ_left_edge),
+                      np.exp(SZ_right_edge))
 
                 theory_mwl_given_lam_sz = self.mean_mwl_in_bin(
                     lam_left_edge, lam_right_edge, SZ_left_edge, SZ_right_edge,
