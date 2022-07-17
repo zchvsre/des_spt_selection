@@ -13,8 +13,10 @@ class MassFunction(object):
     """
     def __init__(self, kind):
 
+        beta_ = 1.6
+
         if kind == "exponential":
-            lnM = expon.rvs(loc=np.log(1e12), scale=1 / beta, size=10**8)
+            lnM = expon.rvs(loc=np.log(1e12), scale=1 / beta_, size=10**8)
 
             def beta(mu):
                 return 1.6
@@ -27,7 +29,7 @@ class MassFunction(object):
             halo_fname = 'data/abacus_mf.npy'
             mass = np.load(os.path.join(project_path, halo_fname))
 
-            hist_data = plt.hist(np.log(mass), bins=30)
+            hist_data = np.histogram(np.log(mass), bins=30)
 
             n = np.log(hist_data[0])  #numbers in each bin
             bins = hist_data[1]
@@ -40,6 +42,9 @@ class MassFunction(object):
                 bin_mid.append(0.5 * (bins[i + 1] + bins[i]))
                 slope = (n[i + 1] - n[i]) / (bins[i + 1] - bins[i])
                 slope_mid.append(-slope)
+
+            slope_mid = np.array(slope_mid)
+            slope_mid[slope_mid > 1.5] = 1
 
             mf_slope_interp = interp1d(bin_mid,
                                        slope_mid,
@@ -83,7 +88,7 @@ class MassFunction(object):
 #         self.beta = mf_slope_interp
 #         self.mass = mass[mass > 1E13]
 
-        plt.hist(np.log(self.mass), label=f"N={len(self.mass)}")
+        plt.hist(np.log(self.mass), label=f"N={len(self.mass)}", bins=30)
         plt.title("Histogram of Log Mass")
         plt.legend()
         plt.show()
