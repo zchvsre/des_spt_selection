@@ -5,75 +5,43 @@ from scipy.interpolate import interp1d
 from colossus.cosmology import cosmology
 import matplotlib.pyplot as plt
 from tqdm import tqdm, trange
-
-h = 0.6726
-params = {
-    'flat': True,
-    'H0': 67.26,
-    'Om0': 0.14212 / h**2,
-    'Ob0': 0.02222 / h**2,
-    'sigma8': 0.81,
-    'ns': 9.9652,
-    'w0': -1.0,
-    'Neff': 3.04
-}
-
-cosmo = cosmology.setCosmology('Abacus', params)
-h_70 = cosmo.H0 / 70
-h_100 = cosmo.H0 / 100
-
-Mpiv_lam = 5E14
-alpha_lam = 0.939
-pi_lam = 4.25 - alpha_lam * np.log(Mpiv_lam) + 0.15 * np.log(1.3 / 1.45)
-scatter_lam = 0.36
-
-#SZ scaling relation from Bocquet et al. 2019
-Mpiv_SZ = 4.3E14 / 0.7
-alpha_SZ = 1.519
-pi_SZ = np.log(5.68) - 1.519 * np.log(Mpiv_SZ) + 0.547 * np.log(
-    cosmo.Ez(0.3) / cosmo.Ez(0.6))
-scatter_SZ = 0.152
-#Mwl scaling relation
-
-alpha_Mwl = 1
-pi_Mwl = 0
-scatter_Mwl = 0.1
+import copy
 
 
 class MonteCarloObservables(object):
-    """Monte Carlo Observables
+    """Monte Carlo observables given mass function, scaling relations, and correlation coefficient
 
     Args:
         object (_type_): _description_
     """
-    def __init__(self,
-                 nh,
-                 r,
-                 lnM,
-                 lnlam_mean=np.nan,
-                 lnSZ_mean=np.nan,
-                 lnMwl_mean=np.nan,
-                 scatter_Mwl=np.nan,
-                 scatter_lam=np.nan,
-                 scatter_SZ=np.nan,
-                 mf_slope_interp=None):
+    def __init__(self, mass_function=None, scaling_relation=None, r=None):
+
+        self.sr = scaling_relation
+        mf = mass_function
+
+        self.lnM = np.log(mf.mass[mf.mass > 1E13])
+        self.nh = len(self.lnM)
+
+        self.lnMwl_mean = copy.deepcopy(self.lnM)
+        self.lnlam_mean = self.sr.alpha_lam * self.lnM + self.sr.pi_lam
+        self.lnSZ_mean = self.sr.alpha_SZ * self.lnM + self.sr.pi_SZ
 
         self.r = r
-        self.scatter_Mwl = scatter_Mwl
-        self.scatter_lam = scatter_lam
-        self.scatter_SZ = scatter_SZ
+        self.scatter_Mwl = self.sr.scatter_Mwl
+        self.scatter_lam = self.sr.scatter_lam
+        self.scatter_SZ = self.sr.scatter_SZ
 
         mv = multivariate_normal([0, 0], [[1, r], [r, 1]])
-        rv = mv.rvs(size=nh)
+        rv = mv.rvs(size=self.nh)
         x = rv[:, 0]
         y = rv[:, 1]
 
         gauss = norm(0, 1)
-        z = gauss.rvs(size=nh)
+        z = gauss.rvs(size=self.nh)
 
-        self.lnlam = lnlam_mean + scatter_lam * x
-        self.lnMwl = lnMwl_mean + scatter_Mwl * y
-        self.lnSZ = lnSZ_mean + scatter_SZ * z
+        self.lnlam = self.lnlam_mean + self.scatter_lam * x
+        self.lnMwl = self.lnMwl_mean + self.scatter_Mwl * y
+        self.lnSZ = self.lnSZ_mean + self.scatter_SZ * z
 
         plt.hist(self.lnlam, bins=20)
         plt.title("Histogram of lnlam")
@@ -87,7 +55,7 @@ class MonteCarloObservables(object):
         plt.title("Histogram of lnMwl")
         plt.show()
 
-        self.mf_slope_interp = mf_slope_interp
+        self.beta = mf.beta
 
 
 #         multiplier = 1000
@@ -126,43 +94,43 @@ class MonteCarloObservables(object):
             _type_: _description_
         """
 
-        mu_lam = (lam - pi_lam) / alpha_lam
-        mu_SZ = (SZ - pi_SZ) / alpha_SZ
+        mu_lam = (lam - self.sr.pi_lam) / self.sr.alpha_lam
+        mu_SZ = (SZ - self.sr.pi_SZ) / self.sr.alpha_SZ
 
-        sig_lam = scatter_lam / alpha_lam
-        sig_SZ = scatter_SZ / alpha_SZ
+        sig_lam = self.sr.scatter_lam / self.sr.alpha_lam
+        sig_SZ = self.sr.scatter_SZ / self.sr.alpha_SZ
 
         mu_guess = (mu_lam / (sig_lam)**2 + mu_SZ /
                     (sig_SZ)**2) / (1 / sig_lam**2 + 1 / sig_SZ**2)
         if mu_guess <= 32:
-            beta = self.mf_slope_interp(mu_guess)
+            beta = self.beta(mu_guess)
         else:
             beta = 1.7
         # print("beta", beta)
 
-        mu_given_lam_SZ_num = (alpha_lam / self.scatter_lam**2) * (
-            lam - pi_lam) + (alpha_SZ / self.scatter_SZ**2) * (SZ -
-                                                               pi_SZ) - beta
-        mu_given_lam_SZ_den = (alpha_lam / self.scatter_lam)**2 + (
-            alpha_SZ / self.scatter_SZ)**2
+        mu_given_lam_SZ_num = (self.sr.alpha_lam / self.sr.scatter_lam**2) * (
+            lam - pi_lam) + (self.sr.alpha_SZ /
+                             self.sr.scatter_SZ**2) * (SZ - pi_SZ) - beta
+        mu_given_lam_SZ_den = (self.sr.alpha_lam / self.sr.scatter_lam)**2 + (
+            self.sr.alpha_SZ / self.sr.scatter_SZ)**2
         mu_given_lam_SZ = mu_given_lam_SZ_num / mu_given_lam_SZ_den
 
-        mu_given_lam = (lam - pi_lam) / alpha_lam
-        mu_given_SZ = (SZ - pi_SZ) / alpha_SZ
+        mu_given_lam = (lam - self.sr.pi_lam) / self.sr.alpha_lam
+        mu_given_SZ = (SZ - self.sr.pi_SZ) / self.sr.alpha_SZ
 
         if correction is True:
 
-            third_term_num = self.r * self.scatter_Mwl * (
-                self.scatter_lam /
-                alpha_lam) * (mu_given_lam - mu_given_SZ + beta *
-                              (self.scatter_SZ / alpha_SZ)**2)
-            third_term_den = (self.scatter_SZ /
-                              alpha_SZ)**2 + (self.scatter_lam / alpha_lam)**2
+            third_term_num = self.r * self.sr.scatter_Mwl * (
+                self.sr.scatter_lam / self.sr.alpha_lam) * (
+                    mu_given_lam - mu_given_SZ + beta *
+                    (self.sr.scatter_SZ / self.sr.alpha_SZ)**2)
+            third_term_den = (self.sr.scatter_SZ / self.sr.alpha_SZ)**2 + (
+                self.sr.scatter_lam / self.sralpha_lam)**2
             third_term = third_term_num / third_term_den
         else:
             third_term = 0
 
-        theory_mwl_given_lambda_SZ = pi_Mwl + alpha_Mwl * mu_given_lam_SZ + third_term
+        theory_mwl_given_lambda_SZ = self.sr.pi_Mwl + self.sr.alpha_Mwl * mu_given_lam_SZ + third_term
 
         return (theory_mwl_given_lambda_SZ)
 
