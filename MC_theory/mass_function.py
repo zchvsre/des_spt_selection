@@ -19,7 +19,11 @@ class MassFunction(object):
             lnM = expon.rvs(loc=np.log(1e12), scale=1 / beta_, size=10**8)
 
             def beta(mu):
-                return 1.6
+
+                if type(mu) == np.float64:
+                    return beta_
+                else:
+                    return beta_ * np.ones(len(mu))
 
             self.beta = beta
             self.mass = np.exp(lnM)
