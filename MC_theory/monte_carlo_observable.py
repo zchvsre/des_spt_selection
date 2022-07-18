@@ -158,10 +158,22 @@ class MonteCarloObservables(object):
         return (theory_mwl_given_lambda_SZ)
 
     def mean_mwl_in_lam_bin(self, lnlam1, lnlam2, correction, NSTEPS):
+        """Mean lensing mass in a richness bin 
+
+        Args:
+            lnlam1 (_type_): _description_
+            lnlam2 (_type_): _description_
+            correction (_type_): _description_
+            NSTEPS (_type_): _description_
+
+        Returns:
+            _type_: _description_
+        """
         lam_range, lam_step = np.linspace(lnlam1, lnlam2, NSTEPS, retstep=True)
         lam_p = self.lam_pdf(lam_range)
 
         norm_factor = np.sum(lam_p) * lam_step
+        print("The normalization factor is:", norm_factor)
 
         plt.plot(lam_range, lam_p)
         plt.title("lam PDF to be put in the integral")
@@ -181,7 +193,8 @@ class MonteCarloObservables(object):
 
         return integral
 
-    def mean_mwl_in_lam_sz_bin(self, lam1, lam2, sz1, sz2, correction, NSTEPS):
+    def mean_mwl_in_lam_sz_bin(self, lnlam1, lnlam2, lnsz1, lnsz2, correction,
+                               NSTEPS):
         """Calculate the precise lensing mass given lambda and SZ bin
 
         Args:
@@ -201,8 +214,8 @@ class MonteCarloObservables(object):
         # norm_factor_lam = self.lam_kde.integrate_box_1d(lam1, lam2)
         # norm_factor_sz = self.sz_kde.integrate_box_1d(sz1, sz2)
 
-        lam_range, lam_step = np.linspace(lam1, lam2, NSTEPS, retstep=True)
-        sz_range, sz_step = np.linspace(sz1, sz2, NSTEPS, retstep=True)
+        lam_range, lam_step = np.linspace(lnlam1, lnlam2, NSTEPS, retstep=True)
+        sz_range, sz_step = np.linspace(lnsz1, lnsz2, NSTEPS, retstep=True)
 
         # lam_p = self.lam_kde.pdf(lam_range)
         # sz_p = self.sz_kde.pdf(sz_range)
@@ -210,14 +223,14 @@ class MonteCarloObservables(object):
         lam_p = self.lam_pdf(lam_range)
         sz_p = self.sz_pdf(sz_range)
 
-        print("The number of out of bound points are", np.sum(lam_p == 0),
-              np.sum(sz_p == 0))
-        lam_p[0] = (lam_p[1] - lam_p[2]) + lam_p[1]
-        lam_p[-1] = (lam_p[-2] - lam_p[-3]) + lam_p[-2]
-        sz_p[0] = (sz_p[1] - sz_p[2]) + sz_p[1]
-        sz_p[-1] = (sz_p[-2] - sz_p[-3]) + sz_p[-2]
-        print("The number of out of bound points are", np.sum(lam_p == 0),
-              np.sum(sz_p == 0))
+        # print("The number of out of bound points are", np.sum(lam_p == 0),
+        #       np.sum(sz_p == 0))
+        # lam_p[0] = (lam_p[1] - lam_p[2]) + lam_p[1]
+        # lam_p[-1] = (lam_p[-2] - lam_p[-3]) + lam_p[-2]
+        # sz_p[0] = (sz_p[1] - sz_p[2]) + sz_p[1]
+        # sz_p[-1] = (sz_p[-2] - sz_p[-3]) + sz_p[-2]
+        # print("The number of out of bound points are", np.sum(lam_p == 0),
+        #       np.sum(sz_p == 0))
 
         norm_factor_lam = np.sum(lam_p) * lam_step
         norm_factor_sz = np.sum(sz_p) * sz_step
@@ -339,8 +352,8 @@ class MonteCarloObservables(object):
 
         return (diff, count)
 
-    def mc_calculate_mean_mwl_given_lam_sz_diff(self, nbins, correction, lam1,
-                                                lam2, sz1, sz2, NSTEPS):
+    def mc_calculate_mean_mwl_diff_given_lam_sz_bin(self, correction, lam1,
+                                                    lam2, sz1, sz2, NSTEPS):
         """Calculate the mean lensing mass difference given lambda and SZ in Monte Carlo.
 
         Args:
@@ -350,9 +363,6 @@ class MonteCarloObservables(object):
         Returns:
             _type_: _description_
         """
-
-        lnlam_bins = np.log(np.array([lam1, lam2]))
-        lnSZ_bins = np.log(np.array([sz1, sz2]))
 
         #pdf from scipy kde
         # def get_pdf_in_bin(data, left_edge, right_edge):
@@ -388,9 +398,11 @@ class MonteCarloObservables(object):
 
         # pdf from interpolating histogram
 
-        self.lam_pdf = self.get_pdf_in_bin(self.lnlam, np.log(lam1),
-                                           np.log(lam2))
-        self.sz_pdf = self.get_pdf_in_bin(self.lnSZ, np.log(sz1), np.log(sz2))
+        lnlam1, lnlam2 = np.log(lam1), np.log(lam2)
+        lnsz1, lnsz2 = np.log(sz1), np.log(sz2)
+
+        self.lam_pdf = self.get_pdf_in_bin(self.lnlam, lnlam1, lnlam2)
+        self.sz_pdf = self.get_pdf_in_bin(self.lnSZ, lnsz1, lnsz2)
 
         # pdf from kde estimate
         # def get_pdf_in_bin(data, left_edge, right_edge):
@@ -409,50 +421,24 @@ class MonteCarloObservables(object):
         # lnlam_bins = pd.qcut(self.lnlam,nbins,retbins=True)[1]
         # lnSZ_bins = pd.qcut(self.lnSZ,nbins,retbins=True)[1]
 
-        diff_array = np.empty([nbins - 1])
-        SZ_array = np.empty([nbins - 1])
-        lam_array = np.empty([nbins - 1])
+        SZ_mask = (self.lnSZ > lnsz1) & (self.lnSZ <= lnsz2)
+        lam_mask = (self.lnlam > lnlam1) & (self.lnlam <= lnlam2)
 
-        diff_array = np.zeros([nbins - 1, nbins - 1])
-        count_array = np.zeros([nbins - 1, nbins - 1])
+        total_mask = SZ_mask & lam_mask  #combine the richness and SZ mask
+        count = np.sum(total_mask)
 
-        for i in range(nbins - 1):  # go over each SZ bin
-            for j in range(nbins - 1):  #go over each lamdba bin
+        print("Lam bounds are", np.exp(lnlam1), np.exp(lnlam2))
+        print("SZ bounds are", np.exp(lnsz1), np.exp(lnsz2))
 
-                SZ_left_edge, SZ_right_edge = lnSZ_bins[i], lnSZ_bins[i + 1]
-                lam_left_edge, lam_right_edge = lnlam_bins[j], lnlam_bins[j +
-                                                                          1]
+        theory_mwl_given_lam_sz = self.mean_mwl_in_lam_sz_bin(
+            lnlam1, lnlam2, lnsz1, lnsz2, correction=correction, NSTEPS=NSTEPS)
+        mc_mean_mwl = np.mean(self.lnMwl[total_mask])
 
-                SZ_mid = (SZ_left_edge + SZ_right_edge) / 2.
-                lam_mid = (lam_left_edge + lam_right_edge) / 2.
+        print(f"Theory:{theory_mwl_given_lam_sz} MC:{mc_mean_mwl}")
 
-                SZ_array[i] = SZ_mid
-                lam_array[j] = lam_mid
+        diff = (theory_mwl_given_lam_sz - mc_mean_mwl)
 
-                SZ_mask = (self.lnSZ > SZ_left_edge) & (self.lnSZ <=
-                                                        SZ_right_edge)
-                lam_mask = (self.lnlam > lam_left_edge) & (self.lnlam <=
-                                                           lam_right_edge)
-
-                total_mask = SZ_mask & lam_mask  #combine the richness and SZ mask
-                count_array[i][j] = np.sum(total_mask)
-
-                print("Lam bounds are", np.exp(lam_left_edge),
-                      np.exp(lam_right_edge))
-                print("SZ bounds are", np.exp(SZ_left_edge),
-                      np.exp(SZ_right_edge))
-
-                theory_mwl_given_lam_sz = self.mean_mwl_in_bin(
-                    lam_left_edge, lam_right_edge, SZ_left_edge, SZ_right_edge,
-                    correction, NSTEPS)
-                mc_mean_mwl = np.mean(self.lnMwl[total_mask])
-
-                print(f"Theory:{theory_mwl_given_lam_sz} MC:{mc_mean_mwl}")
-
-                diff = (theory_mwl_given_lam_sz - mc_mean_mwl)
-                diff_array[i][j] = diff
-
-        return (lam_array, SZ_array, diff_array, count_array)
+        return (diff, count)
 
         #plot x axis r, bin by SZ and lambda
         #plot x axis lambda, bin by SZ
