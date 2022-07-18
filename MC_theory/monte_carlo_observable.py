@@ -82,6 +82,29 @@ class MonteCarloObservables(object):
 # self.P_lam = rv_histogram(np.histogram(self.lnlam, bins=100))
 # self.P_SZ = rv_histogram(np.histogram(self.lnSZ, bins=100))
 
+    def theory_calculate_mean_mwl_given_lam(self, lam, correction=True):
+        """Calculate the mean lensing mass given lambda
+
+        Args:
+            lam (_type_): _description_
+        """
+
+        mu_lam = (lam - self.sr.pi_lam) / self.sr.alpha_lam
+        sig_lam = self.sr.scatter_lam / self.sr.alpha_lam
+
+        mu_guess = mu_lam
+
+        if mu_guess <= 32:
+            beta = self.beta(mu_lam)
+        else:
+            beta = 1.7
+
+        mean_mwl = self.sr.pi_Mwl + self.sr.alpha_Mwl * (
+            mu_lam - beta * sig_lam**2) + self.r * self.sr.scatter_Mwl * (
+                mu_lam - mu_lam - beta * sig_lam**2) / sig_lam
+
+        return mean_mwl
+
     def theory_calculate_mean_mwl_given_lam_sz(self, lam, SZ, correction=True):
         """Calculate the mean lensing mass given lambda and SZ
 
@@ -109,8 +132,8 @@ class MonteCarloObservables(object):
         # print("beta", beta)
 
         mu_given_lam_SZ_num = (self.sr.alpha_lam / self.sr.scatter_lam**2) * (
-            lam - pi_lam) + (self.sr.alpha_SZ /
-                             self.sr.scatter_SZ**2) * (SZ - pi_SZ) - beta
+            lam - self.sr.pi_lam) + (self.sr.alpha_SZ / self.sr.scatter_SZ**
+                                     2) * (SZ - self.sr.pi_SZ) - beta
         mu_given_lam_SZ_den = (self.sr.alpha_lam / self.sr.scatter_lam)**2 + (
             self.sr.alpha_SZ / self.sr.scatter_SZ)**2
         mu_given_lam_SZ = mu_given_lam_SZ_num / mu_given_lam_SZ_den
@@ -125,7 +148,7 @@ class MonteCarloObservables(object):
                     mu_given_lam - mu_given_SZ + beta *
                     (self.sr.scatter_SZ / self.sr.alpha_SZ)**2)
             third_term_den = (self.sr.scatter_SZ / self.sr.alpha_SZ)**2 + (
-                self.sr.scatter_lam / self.sralpha_lam)**2
+                self.sr.scatter_lam / self.sr.alpha_lam)**2
             third_term = third_term_num / third_term_den
         else:
             third_term = 0
@@ -134,7 +157,31 @@ class MonteCarloObservables(object):
 
         return (theory_mwl_given_lambda_SZ)
 
-    def mean_mwl_in_bin(self, lam1, lam2, sz1, sz2, correction, NSTEPS):
+    def mean_mwl_in_lam_bin(self, lnlam1, lnlam2, correction, NSTEPS):
+        lam_range, lam_step = np.linspace(lnlam1, lnlam2, NSTEPS, retstep=True)
+        lam_p = self.lam_pdf(lam_range)
+
+        norm_factor = np.sum(lam_p) * lam_step
+
+        plt.plot(lam_range, lam_p)
+        plt.title("lam PDF to be put in the integral")
+        plt.show()
+
+        integral = 0
+
+        for i, lam in tqdm(enumerate(lam_range)):
+            p_lam = lam_step * lam_p[i]
+            mean_mwl = self.theory_calculate_mean_mwl_given_lam(
+                lam, correction=correction)
+            integral += p_lam * mean_mwl
+
+        print("Integral before renormalization", integral)
+        integral /= norm_factor
+        print("Integral after renormalization", integral)
+
+        return integral
+
+    def mean_mwl_in_lam_sz_bin(self, lam1, lam2, sz1, sz2, correction, NSTEPS):
         """Calculate the precise lensing mass given lambda and SZ bin
 
         Args:
@@ -230,9 +277,71 @@ class MonteCarloObservables(object):
 
         return integral
 
-    def mc_calculate_mean_mwl_given_lam_sz(self, nbins, correction, lam1, lam2,
-                                           sz1, sz2, NSTEPS):
-        """Calculate the mean lensing mass given lambda and SZ in Monte Carlo.
+    def get_pdf_in_bin(self, data, left_edge, right_edge):
+        """Get pdf in observable bin
+
+        Args:
+            data (_type_): _description_
+            left_edge (_type_): _description_
+            right_edge (_type_): _description_
+
+        Returns:
+            _type_: _description_
+        """
+        data_in_bin = np.ma.masked_outside(data, left_edge,
+                                           right_edge).compressed()
+        counts, bin_edges = np.histogram(data_in_bin, density=True, bins=10)
+        bin_mid = 0.5 * (bin_edges[1:] + bin_edges[:-1])
+        pdf = interp1d(bin_mid,
+                       counts,
+                       bounds_error=False,
+                       fill_value="extrapolate")
+        plt.hist(data_in_bin, bins=20)
+        plt.title("Histogram for Interpolation")
+        plt.show()
+        plt.plot(np.linspace(left_edge, right_edge, 1000),
+                 pdf(np.linspace(left_edge, right_edge, 1000)))
+        plt.title("PDF from interpolation")
+        plt.show()
+        return (pdf)
+
+    def mc_calculate_mean_mwl_diff_given_lam_bin(self,
+                                                 lam1,
+                                                 lam2,
+                                                 NSTEPS,
+                                                 correction=True):
+        """Calculate the mean lensing mass difference given lambda
+
+        Args:
+            nbins (_type_): _description_
+            correction (_type_): _description_
+            lam1 (_type_): _description_
+            lam2 (_type_): _description_
+            NSTEPS (_type_): _description_
+        """
+
+        lnlam1, lnlam2 = np.log(lam1), np.log(lam2)
+
+        self.lam_pdf = self.get_pdf_in_bin(self.lnlam, lnlam1, lnlam2)
+
+        lam_mask = (self.lnlam > lnlam1) & (self.lnlam < lnlam2)
+        count = np.sum(lam_mask)
+
+        theory_mwl_given_lam_bin = self.mean_mwl_in_lam_bin(
+            lnlam1, lnlam2, correction, NSTEPS)
+        mc_mean_mwl_given_lam_bin = np.mean(self.lnMwl[lam_mask])
+
+        print(
+            f"Theory:{theory_mwl_given_lam_bin} MC:{mc_mean_mwl_given_lam_bin}"
+        )
+
+        diff = theory_mwl_given_lam_bin - mc_mean_mwl_given_lam_bin
+
+        return (diff, count)
+
+    def mc_calculate_mean_mwl_given_lam_sz_diff(self, nbins, correction, lam1,
+                                                lam2, sz1, sz2, NSTEPS):
+        """Calculate the mean lensing mass difference given lambda and SZ in Monte Carlo.
 
         Args:
             nbins (_type_): _description_
@@ -278,28 +387,10 @@ class MonteCarloObservables(object):
         #     return (rv.pdf)
 
         # pdf from interpolating histogram
-        def get_pdf_in_bin(data, left_edge, right_edge):
-            data_in_bin = np.ma.masked_outside(data, left_edge,
-                                               right_edge).compressed()
-            counts, bin_edges = np.histogram(data_in_bin,
-                                             density=True,
-                                             bins=10)
-            bin_mid = 0.5 * (bin_edges[1:] + bin_edges[:-1])
-            pdf = interp1d(bin_mid,
-                           counts,
-                           bounds_error=False,
-                           fill_value="extrapolate")
-            plt.hist(data_in_bin, bins=20)
-            plt.title("Histogram for Interpolation")
-            plt.show()
-            plt.plot(np.linspace(left_edge, right_edge, 1000),
-                     pdf(np.linspace(left_edge, right_edge, 1000)))
-            plt.title("PDF from interpolation")
-            plt.show()
-            return (pdf)
 
-        self.lam_pdf = get_pdf_in_bin(self.lnlam, np.log(lam1), np.log(lam2))
-        self.sz_pdf = get_pdf_in_bin(self.lnSZ, np.log(sz1), np.log(sz2))
+        self.lam_pdf = self.get_pdf_in_bin(self.lnlam, np.log(lam1),
+                                           np.log(lam2))
+        self.sz_pdf = self.get_pdf_in_bin(self.lnSZ, np.log(sz1), np.log(sz2))
 
         # pdf from kde estimate
         # def get_pdf_in_bin(data, left_edge, right_edge):
@@ -342,9 +433,6 @@ class MonteCarloObservables(object):
                                                         SZ_right_edge)
                 lam_mask = (self.lnlam > lam_left_edge) & (self.lnlam <=
                                                            lam_right_edge)
-
-                SZ_median = np.median(self.lnSZ[SZ_mask])
-                lam_median = np.median(self.lnlam[lam_mask])
 
                 total_mask = SZ_mask & lam_mask  #combine the richness and SZ mask
                 count_array[i][j] = np.sum(total_mask)
