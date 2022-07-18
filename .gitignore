@@ -4,3 +4,7 @@
 /data
 /abacus
 *__pycache__*
+*.json
+*.csv
+*.png
+*.code-workspace
