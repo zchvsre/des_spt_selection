@@ -14,7 +14,11 @@ class MonteCarloObservables(object):
     Args:
         object (_type_): _description_
     """
-    def __init__(self, mass_function=None, scaling_relation=None, r=None):
+    def __init__(self,
+                 mass_function=None,
+                 scaling_relation=None,
+                 r=None,
+                 multiplier=None):
 
         self.sr = scaling_relation
         mf = mass_function
@@ -57,30 +61,47 @@ class MonteCarloObservables(object):
 
         self.beta = mf.beta
 
+        rv = mv.rvs(size=self.nh * multiplier)
+        x = rv[:, 0]
+        y = rv[:, 1]
 
-#         multiplier = 1000
-#         rv = mv.rvs(size=nh * multiplier)
-#         x = rv[:, 0]
-#         y = rv[:, 1]
+        gauss = norm(0, 1)
+        z = gauss.rvs(size=self.nh * multiplier)
 
-#         gauss = norm(0, 1)
-#         z = gauss.rvs(size=nh * multiplier)
+        self.lnlam_for_pdf = np.repeat(self.lnlam_mean,
+                                       multiplier) + self.scatter_lam * x
+        self.lnMwl_for_pdf = np.repeat(self.lnMwl_mean,
+                                       multiplier) + self.scatter_Mwl * y
+        self.lnSZ_for_pdf = np.repeat(self.lnSZ_mean,
+                                      multiplier) + self.scatter_SZ * z
 
-#         self.lnlam_for_pdf = np.repeat(lnlam_mean,
-#                                        multiplier) + scatter_lam * x
-#         self.lnMwl_for_pdf = np.repeat(lnMwl_mean,
-#                                        multiplier) + scatter_Mwl * y
-#         self.lnSZ_for_pdf = np.repeat(lnSZ_mean, multiplier) + scatter_SZ * z
+    def get_pdf_in_bin(self, data, left_edge, right_edge):
+        """Get pdf in observable bin
 
-# self.P_lam = rv_histogram(
-#     np.histogram(self.lnlam,
-#                  bins=np.linspace(np.log(1), np.log(50), 30)))
-# self.P_SZ = rv_histogram(
-#     np.histogram(self.lnSZ,
-#                  bins=np.linspace(np.log(0.001), np.log(5), 100)))
+        Args:
+            data (_type_): _description_
+            left_edge (_type_): _description_
+            right_edge (_type_): _description_
 
-# self.P_lam = rv_histogram(np.histogram(self.lnlam, bins=100))
-# self.P_SZ = rv_histogram(np.histogram(self.lnSZ, bins=100))
+        Returns:
+            _type_: _description_
+        """
+        data_in_bin = np.ma.masked_outside(data, left_edge,
+                                           right_edge).compressed()
+        counts, bin_edges = np.histogram(data_in_bin, density=True, bins=10)
+        bin_mid = 0.5 * (bin_edges[1:] + bin_edges[:-1])
+        pdf = interp1d(bin_mid,
+                       counts,
+                       bounds_error=False,
+                       fill_value="extrapolate")
+        plt.hist(data_in_bin, bins=20)
+        plt.title("Histogram for Interpolation")
+        plt.show()
+        plt.plot(np.linspace(left_edge, right_edge, 1000),
+                 pdf(np.linspace(left_edge, right_edge, 1000)))
+        plt.title("PDF from interpolation")
+        plt.show()
+        return (pdf)
 
     def theory_calculate_mean_mwl_given_lam(self, lam, correction=True):
         """Calculate the mean lensing mass given lambda
@@ -94,14 +115,19 @@ class MonteCarloObservables(object):
 
         mu_guess = mu_lam
 
-        if mu_guess <= 32:
-            beta = self.beta(mu_lam)
-        else:
-            beta = 1.7
+        beta = self.beta(mu_guess)
 
-        mean_mwl = self.sr.pi_Mwl + self.sr.alpha_Mwl * (
-            mu_lam - beta * sig_lam**2) + self.r * self.sr.scatter_Mwl * (
-                mu_lam - mu_lam - beta * sig_lam**2) / sig_lam
+        mean_mu_lam = mu_lam - beta * sig_lam**2
+
+        # if mu_guess <= 32:
+        #     beta = self.beta(mu_lam)
+        # else:
+        #     beta = 1.7
+
+        mean_mwl = self.sr.pi_Mwl + self.sr.alpha_Mwl * mean_mu_lam + self.r * self.sr.scatter_Mwl * (
+            mu_lam - mean_mu_lam) / sig_lam
+
+        mean_mwl = self.sr.pi_Mwl + self.sr.alpha_Mwl * mean_mu_lam + beta * self.r * self.scatter_Mwl * sig_lam
 
         return mean_mwl
 
@@ -131,31 +157,16 @@ class MonteCarloObservables(object):
             beta = 1.7
         # print("beta", beta)
 
-        mu_given_lam_SZ_num = (self.sr.alpha_lam / self.sr.scatter_lam**2) * (
-            lam - self.sr.pi_lam) + (self.sr.alpha_SZ / self.sr.scatter_SZ**
-                                     2) * (SZ - self.sr.pi_SZ) - beta
-        mu_given_lam_SZ_den = (self.sr.alpha_lam / self.sr.scatter_lam)**2 + (
-            self.sr.alpha_SZ / self.sr.scatter_SZ)**2
-        mu_given_lam_SZ = mu_given_lam_SZ_num / mu_given_lam_SZ_den
+        second_term = (self.sr.alpha_Mwl *
+                       (mu_lam * sig_SZ**2 + mu_SZ * sig_lam**2 - beta *
+                        mu_lam**2 * mu_SZ**2)) / (sig_SZ**2 + sig_lam**2)
+        third_term = (self.r * self.sr.scatter_Mwl * sig_lam *
+                      (mu_lam - mu_SZ + beta * sig_SZ**2)) / (sig_SZ**2 +
+                                                              sig_lam**2)
 
-        mu_given_lam = (lam - self.sr.pi_lam) / self.sr.alpha_lam
-        mu_given_SZ = (SZ - self.sr.pi_SZ) / self.sr.alpha_SZ
+        theory_mean_mwl_given_lam_sz = self.sr.pi_Mwl + second_term + third_term
 
-        if correction is True:
-
-            third_term_num = self.r * self.sr.scatter_Mwl * (
-                self.sr.scatter_lam / self.sr.alpha_lam) * (
-                    mu_given_lam - mu_given_SZ + beta *
-                    (self.sr.scatter_SZ / self.sr.alpha_SZ)**2)
-            third_term_den = (self.sr.scatter_SZ / self.sr.alpha_SZ)**2 + (
-                self.sr.scatter_lam / self.sr.alpha_lam)**2
-            third_term = third_term_num / third_term_den
-        else:
-            third_term = 0
-
-        theory_mwl_given_lambda_SZ = self.sr.pi_Mwl + self.sr.alpha_Mwl * mu_given_lam_SZ + third_term
-
-        return (theory_mwl_given_lambda_SZ)
+        return (theory_mean_mwl_given_lambda_SZ)
 
     def mean_mwl_in_lam_bin(self, lnlam1, lnlam2, correction, NSTEPS):
         """Mean lensing mass in a richness bin 
@@ -169,26 +180,34 @@ class MonteCarloObservables(object):
         Returns:
             _type_: _description_
         """
+        print(lnlam1, lnlam2)
         lam_range, lam_step = np.linspace(lnlam1, lnlam2, NSTEPS, retstep=True)
-        lam_p = self.lam_pdf(lam_range)
+        lam_mid = 0.5 * (lam_range[1:] + lam_range[:-1])
+        # lam_p = self.lam_pdf(lam_mid)
 
-        norm_factor = np.sum(lam_p) * lam_step
-        print("The normalization factor is:", norm_factor)
+        # norm_factor = np.sum(lam_p) * lam_step
+        # print("The normalization factor is:", norm_factor)
 
-        plt.plot(lam_range, lam_p)
-        plt.title("lam PDF to be put in the integral")
-        plt.show()
+        # plt.plot(lam_mid, lam_p)
+        # plt.title("lam PDF to be put in the integral")
+        # plt.show()
 
         integral = 0
 
-        for i, lam in tqdm(enumerate(lam_range)):
-            p_lam = lam_step * lam_p[i]
+        x_array = lam_mid
+        y_array = [None] * len(lam_mid)
+        norm_array = [None] * len(lam_mid)
+
+        for i, lam in tqdm(enumerate(lam_mid)):
+            p_lam = self.lam_pdf(lam)
             mean_mwl = self.theory_calculate_mean_mwl_given_lam(
                 lam, correction=correction)
-            integral += p_lam * mean_mwl
+            y_array[i] = p_lam * mean_mwl
+            norm_array[i] = p_lam
+
+        integral = np.trapz(y_array, x_array) / np.trapz(norm_array, x_array)
 
         print("Integral before renormalization", integral)
-        integral /= norm_factor
         print("Integral after renormalization", integral)
 
         return integral
@@ -290,34 +309,6 @@ class MonteCarloObservables(object):
 
         return integral
 
-    def get_pdf_in_bin(self, data, left_edge, right_edge):
-        """Get pdf in observable bin
-
-        Args:
-            data (_type_): _description_
-            left_edge (_type_): _description_
-            right_edge (_type_): _description_
-
-        Returns:
-            _type_: _description_
-        """
-        data_in_bin = np.ma.masked_outside(data, left_edge,
-                                           right_edge).compressed()
-        counts, bin_edges = np.histogram(data_in_bin, density=True, bins=10)
-        bin_mid = 0.5 * (bin_edges[1:] + bin_edges[:-1])
-        pdf = interp1d(bin_mid,
-                       counts,
-                       bounds_error=False,
-                       fill_value="extrapolate")
-        plt.hist(data_in_bin, bins=20)
-        plt.title("Histogram for Interpolation")
-        plt.show()
-        plt.plot(np.linspace(left_edge, right_edge, 1000),
-                 pdf(np.linspace(left_edge, right_edge, 1000)))
-        plt.title("PDF from interpolation")
-        plt.show()
-        return (pdf)
-
     def mc_calculate_mean_mwl_diff_given_lam_bin(self,
                                                  lam1,
                                                  lam2,
@@ -335,7 +326,7 @@ class MonteCarloObservables(object):
 
         lnlam1, lnlam2 = np.log(lam1), np.log(lam2)
 
-        self.lam_pdf = self.get_pdf_in_bin(self.lnlam, lnlam1, lnlam2)
+        self.lam_pdf = self.get_pdf_in_bin(self.lnlam_for_pdf, lnlam1, lnlam2)
 
         lam_mask = (self.lnlam > lnlam1) & (self.lnlam < lnlam2)
         count = np.sum(lam_mask)
