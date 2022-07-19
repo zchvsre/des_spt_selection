@@ -131,7 +131,10 @@ class MonteCarloObservables(object):
 
         return mean_mwl
 
-    def theory_calculate_mean_mwl_given_lam_sz(self, lam, SZ, correction=True):
+    def theory_calculate_mean_mwl_given_lam_sz(self,
+                                               lnlam,
+                                               lnsz,
+                                               correction=True):
         """Calculate the mean lensing mass given lambda and SZ
 
         Args:
@@ -143,30 +146,28 @@ class MonteCarloObservables(object):
             _type_: _description_
         """
 
-        mu_lam = (lam - self.sr.pi_lam) / self.sr.alpha_lam
-        mu_SZ = (SZ - self.sr.pi_SZ) / self.sr.alpha_SZ
+        mu_lam = (lnlam - self.sr.pi_lam) / self.sr.alpha_lam
+        mu_SZ = (lnsz - self.sr.pi_SZ) / self.sr.alpha_SZ
 
         sig_lam = self.sr.scatter_lam / self.sr.alpha_lam
         sig_SZ = self.sr.scatter_SZ / self.sr.alpha_SZ
 
         mu_guess = (mu_lam / (sig_lam)**2 + mu_SZ /
                     (sig_SZ)**2) / (1 / sig_lam**2 + 1 / sig_SZ**2)
-        if mu_guess <= 32:
-            beta = self.beta(mu_guess)
-        else:
-            beta = 1.7
-        # print("beta", beta)
+
+        beta = self.beta(mu_guess)
 
         second_term = (self.sr.alpha_Mwl *
                        (mu_lam * sig_SZ**2 + mu_SZ * sig_lam**2 - beta *
-                        mu_lam**2 * mu_SZ**2)) / (sig_SZ**2 + sig_lam**2)
+                        sig_lam**2 * sig_SZ**2)) / (sig_SZ**2 + sig_lam**2)
+
         third_term = (self.r * self.sr.scatter_Mwl * sig_lam *
                       (mu_lam - mu_SZ + beta * sig_SZ**2)) / (sig_SZ**2 +
                                                               sig_lam**2)
 
         theory_mean_mwl_given_lam_sz = self.sr.pi_Mwl + second_term + third_term
 
-        return (theory_mean_mwl_given_lambda_SZ)
+        return (theory_mean_mwl_given_lam_sz)
 
     def mean_mwl_in_lam_bin(self, lnlam1, lnlam2, correction, NSTEPS):
         """Mean lensing mass in a richness bin 
@@ -236,20 +237,8 @@ class MonteCarloObservables(object):
         lam_range, lam_step = np.linspace(lnlam1, lnlam2, NSTEPS, retstep=True)
         sz_range, sz_step = np.linspace(lnsz1, lnsz2, NSTEPS, retstep=True)
 
-        # lam_p = self.lam_kde.pdf(lam_range)
-        # sz_p = self.sz_kde.pdf(sz_range)
-
         lam_p = self.lam_pdf(lam_range)
         sz_p = self.sz_pdf(sz_range)
-
-        # print("The number of out of bound points are", np.sum(lam_p == 0),
-        #       np.sum(sz_p == 0))
-        # lam_p[0] = (lam_p[1] - lam_p[2]) + lam_p[1]
-        # lam_p[-1] = (lam_p[-2] - lam_p[-3]) + lam_p[-2]
-        # sz_p[0] = (sz_p[1] - sz_p[2]) + sz_p[1]
-        # sz_p[-1] = (sz_p[-2] - sz_p[-3]) + sz_p[-2]
-        # print("The number of out of bound points are", np.sum(lam_p == 0),
-        #       np.sum(sz_p == 0))
 
         norm_factor_lam = np.sum(lam_p) * lam_step
         norm_factor_sz = np.sum(sz_p) * sz_step
@@ -264,13 +253,6 @@ class MonteCarloObservables(object):
         plt.plot(sz_range, sz_p)
         plt.title("sz PDF to be put in the integral")
         plt.show()
-        # lam_p_smooth = scipy.signal.savgol_filter(lam_p, 5, 1)
-        # sz_p_smooth = scipy.signal.savgol_filter(sz_p, 5, 1)
-
-        # plt.plot(lam_range, lam_p_smooth)
-        # plt.show()
-        # plt.plot(sz_range, sz_p_smooth)
-        # plt.show()
 
         integral = 0
 
