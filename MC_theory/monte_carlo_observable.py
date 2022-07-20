@@ -6,6 +6,7 @@ from colossus.cosmology import cosmology
 import matplotlib.pyplot as plt
 from tqdm import tqdm, trange
 import copy
+import scipy as sp
 
 
 class MonteCarloObservables(object):
@@ -75,33 +76,50 @@ class MonteCarloObservables(object):
         self.lnSZ_for_pdf = np.repeat(self.lnSZ_mean,
                                       multiplier) + self.scatter_SZ * z
 
+    # def get_pdf_in_bin(self, data, left_edge, right_edge):
+    #     """Get pdf in observable bin
+
+    #     Args:
+    #         data (_type_): _description_
+    #         left_edge (_type_): _description_
+    #         right_edge (_type_): _description_
+
+    #     Returns:
+    #         _type_: _description_
+    #     """
+    #     data_in_bin = np.ma.masked_outside(data, left_edge,
+    #                                        right_edge).compressed()
+    #     counts, bin_edges = np.histogram(data_in_bin, density=True, bins=10)
+    #     bin_mid = 0.5 * (bin_edges[1:] + bin_edges[:-1])
+    #     pdf = interp1d(bin_mid,
+    #                    counts,
+    #                    bounds_error=False,
+    #                    fill_value="extrapolate")
+    #     plt.hist(data_in_bin, bins=20)
+    #     plt.title("Histogram for Interpolation")
+    #     plt.show()
+    #     plt.plot(np.linspace(left_edge, right_edge, 1000),
+    #              pdf(np.linspace(left_edge, right_edge, 1000)))
+    #     plt.title("PDF from interpolation")
+    #     plt.show()
+    #     return (pdf)
+
     def get_pdf_in_bin(self, data, left_edge, right_edge):
-        """Get pdf in observable bin
 
-        Args:
-            data (_type_): _description_
-            left_edge (_type_): _description_
-            right_edge (_type_): _description_
-
-        Returns:
-            _type_: _description_
-        """
         data_in_bin = np.ma.masked_outside(data, left_edge,
                                            right_edge).compressed()
-        counts, bin_edges = np.histogram(data_in_bin, density=True, bins=10)
-        bin_mid = 0.5 * (bin_edges[1:] + bin_edges[:-1])
-        pdf = interp1d(bin_mid,
-                       counts,
-                       bounds_error=False,
-                       fill_value="extrapolate")
-        plt.hist(data_in_bin, bins=20)
-        plt.title("Histogram for Interpolation")
+        rv = sp.stats.rv_histogram(np.histogram(data_in_bin, bins=500))
+        plt.hist(data_in_bin)
+        plt.title("Histogram of Observable")
         plt.show()
-        plt.plot(np.linspace(left_edge, right_edge, 1000),
-                 pdf(np.linspace(left_edge, right_edge, 1000)))
-        plt.title("PDF from interpolation")
+        plt.plot(
+            np.linspace(data_in_bin.min(), data_in_bin.max(), 10000),
+            rv.pdf(np.linspace(data_in_bin.min(), data_in_bin.max(), 10000)))
+        plt.title("PDF Generated from the Histogram")
         plt.show()
-        return (pdf)
+        # return (rv.pdf)
+
+        return (rv.pdf)
 
     def theory_calculate_mean_mwl_given_lam(self, lam, correction=True):
         """Calculate the mean lensing mass given lambda
@@ -375,8 +393,8 @@ class MonteCarloObservables(object):
         lnlam1, lnlam2 = np.log(lam1), np.log(lam2)
         lnsz1, lnsz2 = np.log(sz1), np.log(sz2)
 
-        self.lam_pdf = self.get_pdf_in_bin(self.lnlam, lnlam1, lnlam2)
-        self.sz_pdf = self.get_pdf_in_bin(self.lnSZ, lnsz1, lnsz2)
+        self.lam_pdf = self.get_pdf_in_bin(self.lnlam_for_pdf, lnlam1, lnlam2)
+        self.sz_pdf = self.get_pdf_in_bin(self.lnSZ_for_pdf, lnsz1, lnsz2)
 
         # pdf from kde estimate
         # def get_pdf_in_bin(data, left_edge, right_edge):
@@ -427,6 +445,7 @@ class MonteCarloObservables(object):
             NSTEPS (_type_): _description_
         """
         lam_list = [None] * len(bin_numbers)
+        sz_list = [None] * len(bin_numbers)
         diff_list = [None] * len(bin_numbers)
 
         for i, bin_number in enumerate(bin_numbers):
@@ -450,22 +469,31 @@ class MonteCarloObservables(object):
                         sz2=sz_range[j + 1],
                         NSTEPS=NSTEPS)
 
-            lam_list[i], diff_list[i] = lam_mid, diff_array
+            lam_list[i], sz_list[i], diff_list[i] = lam_mid, sz_mid, diff_array
 
-        plt.figure(figsize=(10, 8), dpi=100)
-        for i in range(len(lam_list)):
-            plt.plot(lam_list[i],
-                     diff_list[i],
-                     'o-',
-                     label=f"{bin_numbers[i]} bins")
-            plt.xlim(lam1, lam2)
-            plt.ylim(-0.1, 0.1)
-            plt.title("Integration Formula")
-            plt.xlabel(r"$\lambda$")
-            plt.ylabel(r"$lnM_{wl}$ Numerical - Theory")
-            plt.legend()
+        def plot_diff(target_list, x_label, xlim1, xlim2):
 
-            print(diff_list[i])
+            plt.figure(figsize=(10, 8), dpi=100)
+            for i in range(len(target_list)):
+                plt.plot(target_list[i],
+                         diff_list[i],
+                         'o-',
+                         label=f"{bin_numbers[i]} bins")
+                plt.xlim(xlim1, xlim2)
+                plt.ylim(-0.5, 0.5)
+                plt.title("Integration Formula")
+                plt.xlabel(x_label)
+                plt.ylabel(r"$lnM_{wl}$ Numerical - Theory")
+
+                plt.axhline(0, c='gray', ls='--')
+                plt.axhline(0.01, c='k', ls='--')
+                plt.axhline(-0.01, c='k', ls='--')
+
+                plt.legend()
+            plt.show()
+
+        plot_diff(lam_list, r"$\lambda$", lam1, lam2)
+        plot_diff(sz_list, r"SZ", sz1, sz2)
 
         #plot x axis r, bin by SZ and lambda
         #plot x axis lambda, bin by SZ
