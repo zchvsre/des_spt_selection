@@ -237,38 +237,36 @@ class MonteCarloObservables(object):
         lam_range, lam_step = np.linspace(lnlam1, lnlam2, NSTEPS, retstep=True)
         sz_range, sz_step = np.linspace(lnsz1, lnsz2, NSTEPS, retstep=True)
 
-        lam_p = self.lam_pdf(lam_range)
-        sz_p = self.sz_pdf(sz_range)
+        lam_mid = 0.5 * (lam_range[1:] + lam_range[:-1])
+        sz_mid = 0.5 * (sz_range[1:] + sz_range[:-1])
 
-        norm_factor_lam = np.sum(lam_p) * lam_step
-        norm_factor_sz = np.sum(sz_p) * sz_step
+        integral_mesh = np.empty([len(lam_mid), len(sz_mid)])
+        norm_mesh = np.empty([len(lam_mid), len(sz_mid)])
+        lam_mesh = np.empty([len(lam_mid), len(sz_mid)])
+        sz_mesh = np.empty([len(lam_mid), len(sz_mid)])
 
-        print("The normalization factors are:", norm_factor_lam,
-              norm_factor_sz)
+        for i, lnlam in tqdm(enumerate(lam_mid)):
+            for j, lnsz in enumerate(sz_mid):
 
-        plt.plot(lam_range, lam_p)
-        plt.title("lam PDF to be put in the integral")
-        plt.show()
+                p_lam = self.lam_pdf(lnlam)
+                p_sz = self.sz_pdf(lnsz)
 
-        plt.plot(sz_range, sz_p)
-        plt.title("sz PDF to be put in the integral")
-        plt.show()
+                lam_mesh[i][j] = lnlam
+                sz_mesh[i][j] = lnsz
 
-        integral = 0
+                integral_mesh[i][
+                    j] = p_lam * p_sz * self.theory_calculate_mean_mwl_given_lam_sz(
+                        lnlam, lnsz, correction=True)
 
-        for i, lam in tqdm(enumerate(lam_range)):
-            for j, sz in enumerate(sz_range):
-                # print(lam, sz)
-                p_lam = lam_step * lam_p[i]
-                p_sz = sz_step * sz_p[j]
-                mean_mwl = self.theory_calculate_mean_mwl_given_lam_sz(
-                    lam, sz, correction=correction)
-                integral += p_lam * p_sz * mean_mwl
+                norm_mesh[i][j] = p_lam * p_sz
 
-        print("Integral before renormalization", integral)
-        integral /= norm_factor_lam
-        integral /= norm_factor_sz
-        print("Integral after renormalization", integral)
+        integral = np.trapz(np.trapz(integral_mesh, lam_mid, axis=0),
+                            sz_mid,
+                            axis=0)
+        norm = np.trapz(np.trapz(norm_mesh, lam_mid, axis=0), sz_mid, axis=0)
+
+        print(lam_mesh)
+        print(sz_mesh)
 
         # mesh = self.theory_calculate_mean_mwl_given_lam_sz(
         #     lam_range.reshape(-1, 1),
@@ -289,7 +287,10 @@ class MonteCarloObservables(object):
         # integral = romb([romb(SZ, SZ_step) for SZ in mesh], lam_step)
         # integral = simps([simps(SZ, SZ_range) for SZ in mesh], lam_range)
 
-        return integral
+        print(f"{integral=}")
+        print(f"{norm=}")
+
+        return integral / norm
 
     def mc_calculate_mean_mwl_diff_given_lam_bin(self,
                                                  lam1,
@@ -412,6 +413,59 @@ class MonteCarloObservables(object):
         diff = (theory_mwl_given_lam_sz - mc_mean_mwl)
 
         return (diff, count)
+
+    def verify_theory_mean_mwl_given_lam_sz_bin(self, lam1, lam2, sz1, sz2,
+                                                bin_numbers, NSTEPS):
+        """Verify that the theoretical formula is correct with different bin numbers
+
+        Args:
+            lam1 (_type_): _description_
+            lam2 (_type_): _description_
+            sz1 (_type_): _description_
+            sz2 (_type_): _description_
+            bin_numbers (_type_): _description_
+            NSTEPS (_type_): _description_
+        """
+        lam_list = [None] * len(bin_numbers)
+        diff_list = [None] * len(bin_numbers)
+
+        for i, bin_number in enumerate(bin_numbers):
+
+            diff_array = np.empty([bin_number - 1])
+            count_array = np.empty([bin_number - 1])
+
+            lam_range = np.linspace(lam1, lam2, bin_number)
+            sz_range = np.linspace(sz1, sz2, bin_number)
+
+            lam_mid = 0.5 * (lam_range[1:] + lam_range[:-1])
+            sz_mid = 0.5 * (sz_range[1:] + sz_range[:-1])
+
+            for j in range(len(lam_mid)):
+                diff_array[j], count_array[
+                    j] = self.mc_calculate_mean_mwl_diff_given_lam_sz_bin(
+                        correction=True,
+                        lam1=lam_range[j],
+                        lam2=lam_range[j + 1],
+                        sz1=sz_range[j],
+                        sz2=sz_range[j + 1],
+                        NSTEPS=NSTEPS)
+
+            lam_list[i], diff_list[i] = lam_mid, diff_array
+
+        plt.figure(figsize=(10, 8), dpi=100)
+        for i in range(len(lam_list)):
+            plt.plot(lam_list[i],
+                     diff_list[i],
+                     'o-',
+                     label=f"{bin_numbers[i]} bins")
+            plt.xlim(lam1, lam2)
+            plt.ylim(-0.1, 0.1)
+            plt.title("Integration Formula")
+            plt.xlabel(r"$\lambda$")
+            plt.ylabel(r"$lnM_{wl}$ Numerical - Theory")
+            plt.legend()
+
+            print(diff_list[i])
 
         #plot x axis r, bin by SZ and lambda
         #plot x axis lambda, bin by SZ
