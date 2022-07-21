@@ -91,10 +91,7 @@ class MonteCarloObservables(object):
                                            right_edge).compressed()
         counts, bin_edges = np.histogram(data_in_bin, density=True, bins=10)
         bin_mid = 0.5 * (bin_edges[1:] + bin_edges[:-1])
-        pdf = interp1d(bin_mid,
-                       counts,
-                       bounds_error=False,
-                       fill_value="extrapolate")
+        pdf = interp1d(bin_mid, counts, bounds_error=True)
         plt.hist(data_in_bin, bins=20)
         plt.title("Histogram for Interpolation")
         plt.show()
@@ -507,7 +504,7 @@ class MonteCarloObservables(object):
         def plot_diff(target_list, x_label, xlim1, xlim2):
 
             plt.figure(figsize=(10, 8), dpi=100)
-            for i in range(len(target_list)):
+            for i, target in enumerate(target_list):
                 plt.plot(target_list[i],
                          diff_list[i],
                          'o-',
