@@ -38,6 +38,11 @@ class MassFunction(object):
             n = np.log(hist_data[0])  #numbers in each bin
             bins = hist_data[1]
             bins = 0.5 * (bins[0:-1] + bins[1:])
+            plt.plot(bins, n)
+            plt.title("Logarithmic Number of Halos")
+            plt.show()
+
+            bins = 0.5 * (bins[0:-1] + bins[1:])
 
             bin_mid = []
             slope_mid = []
@@ -48,7 +53,7 @@ class MassFunction(object):
                 slope_mid.append(-slope)
 
             slope_mid = np.array(slope_mid)
-            slope_mid[slope_mid > 1.5] = 1
+            # slope_mid[slope_mid > 1.5] = 1
 
             mf_slope_interp = interp1d(bin_mid,
                                        slope_mid,
@@ -100,3 +105,4 @@ class MassFunction(object):
         x_for_beta = np.linspace(np.log(1E13), np.log(self.mass.max()), 20)
         plt.plot(x_for_beta, self.beta(x_for_beta))
         plt.title("Beta for Mass")
+        plt.show()
