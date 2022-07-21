@@ -76,35 +76,44 @@ class MonteCarloObservables(object):
         self.lnSZ_for_pdf = np.repeat(self.lnSZ_mean,
                                       multiplier) + self.scatter_SZ * z
 
-    # def get_pdf_in_bin(self, data, left_edge, right_edge):
-    #     """Get pdf in observable bin
+    def get_pdf_in_bin_by_interpolation(self, data, left_edge, right_edge):
+        """Get pdf in observable bin by interpolating
 
-    #     Args:
-    #         data (_type_): _description_
-    #         left_edge (_type_): _description_
-    #         right_edge (_type_): _description_
+        Args:
+            data (_type_): _description_
+            left_edge (_type_): _description_
+            right_edge (_type_): _description_
 
-    #     Returns:
-    #         _type_: _description_
-    #     """
-    #     data_in_bin = np.ma.masked_outside(data, left_edge,
-    #                                        right_edge).compressed()
-    #     counts, bin_edges = np.histogram(data_in_bin, density=True, bins=10)
-    #     bin_mid = 0.5 * (bin_edges[1:] + bin_edges[:-1])
-    #     pdf = interp1d(bin_mid,
-    #                    counts,
-    #                    bounds_error=False,
-    #                    fill_value="extrapolate")
-    #     plt.hist(data_in_bin, bins=20)
-    #     plt.title("Histogram for Interpolation")
-    #     plt.show()
-    #     plt.plot(np.linspace(left_edge, right_edge, 1000),
-    #              pdf(np.linspace(left_edge, right_edge, 1000)))
-    #     plt.title("PDF from interpolation")
-    #     plt.show()
-    #     return (pdf)
+        Returns:
+            _type_: _description_
+        """
+        data_in_bin = np.ma.masked_outside(data, left_edge,
+                                           right_edge).compressed()
+        counts, bin_edges = np.histogram(data_in_bin, density=True, bins=10)
+        bin_mid = 0.5 * (bin_edges[1:] + bin_edges[:-1])
+        pdf = interp1d(bin_mid,
+                       counts,
+                       bounds_error=False,
+                       fill_value="extrapolate")
+        plt.hist(data_in_bin, bins=20)
+        plt.title("Histogram for Interpolation")
+        plt.show()
+        plt.plot(np.linspace(left_edge, right_edge, 1000),
+                 pdf(np.linspace(left_edge, right_edge, 1000)))
+        plt.title("PDF from interpolation")
+        plt.show()
+        return (pdf)
 
-    def get_pdf_in_bin(self, data, left_edge, right_edge):
+    def get_pdf_in_bin_by_rv_histogram(self, data, left_edge, right_edge):
+        """Get pdf for rv.histogram
+        Args:
+            data (_type_): _description_
+            left_edge (_type_): _description_
+            right_edge (_type_): _description_
+
+        Returns:
+            _type_: _description_
+        """
 
         data_in_bin = np.ma.masked_outside(data, left_edge,
                                            right_edge).compressed()
@@ -232,7 +241,7 @@ class MonteCarloObservables(object):
         return integral
 
     def mean_mwl_in_lam_sz_bin(self, lnlam1, lnlam2, lnsz1, lnsz2, correction,
-                               NSTEPS):
+                               NSTEPS, pdf):
         """Calculate the precise lensing mass given lambda and SZ bin
 
         Args:
@@ -345,7 +354,8 @@ class MonteCarloObservables(object):
         return (diff, count)
 
     def mc_calculate_mean_mwl_diff_given_lam_sz_bin(self, correction, lam1,
-                                                    lam2, sz1, sz2, NSTEPS):
+                                                    lam2, sz1, sz2, NSTEPS,
+                                                    pdf):
         """Calculate the mean lensing mass difference given lambda and SZ in Monte Carlo.
 
         Args:
@@ -393,8 +403,17 @@ class MonteCarloObservables(object):
         lnlam1, lnlam2 = np.log(lam1), np.log(lam2)
         lnsz1, lnsz2 = np.log(sz1), np.log(sz2)
 
-        self.lam_pdf = self.get_pdf_in_bin(self.lnlam_for_pdf, lnlam1, lnlam2)
-        self.sz_pdf = self.get_pdf_in_bin(self.lnSZ_for_pdf, lnsz1, lnsz2)
+        if pdf == "rv_histogram":
+
+            self.lam_pdf = self.get_pdf_in_bin_by_rv_histogram(
+                self.lnlam_for_pdf, lnlam1, lnlam2)
+            self.sz_pdf = self.get_pdf_in_bin_by_rv_histogram(
+                self.lnSZ_for_pdf, lnsz1, lnsz2)
+        elif pdf == "histogram_interpolation":
+            self.lam_pdf = self.get_pdf_in_bin_by_interpolation(
+                self.lnlam_for_pdf, lnlam1, lnlam2)
+            self.sz_pdf = self.get_pdf_in_bin_by_interpolation(
+                self.lnSZ_for_pdf, lnsz1, lnsz2)
 
         # pdf from kde estimate
         # def get_pdf_in_bin(data, left_edge, right_edge):
@@ -423,7 +442,13 @@ class MonteCarloObservables(object):
         print("SZ bounds are", np.exp(lnsz1), np.exp(lnsz2))
 
         theory_mwl_given_lam_sz = self.mean_mwl_in_lam_sz_bin(
-            lnlam1, lnlam2, lnsz1, lnsz2, correction=correction, NSTEPS=NSTEPS)
+            lnlam1,
+            lnlam2,
+            lnsz1,
+            lnsz2,
+            correction=correction,
+            NSTEPS=NSTEPS,
+            pdf=pdf)
         mc_mean_mwl = np.mean(self.lnMwl[total_mask])
 
         print(f"Theory:{theory_mwl_given_lam_sz} MC:{mc_mean_mwl}")
@@ -433,7 +458,7 @@ class MonteCarloObservables(object):
         return (diff, count)
 
     def verify_theory_mean_mwl_given_lam_sz_bin(self, lam1, lam2, sz1, sz2,
-                                                bin_numbers, NSTEPS):
+                                                bin_numbers, NSTEPS, pdf):
         """Verify that the theoretical formula is correct with different bin numbers
 
         Args:
@@ -467,7 +492,8 @@ class MonteCarloObservables(object):
                         lam2=lam_range[j + 1],
                         sz1=sz_range[j],
                         sz2=sz_range[j + 1],
-                        NSTEPS=NSTEPS)
+                        NSTEPS=NSTEPS,
+                        pdf=pdf)
 
             lam_list[i], sz_list[i], diff_list[i] = lam_mid, sz_mid, diff_array
 
