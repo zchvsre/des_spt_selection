@@ -404,7 +404,6 @@ class MonteCarloObservables(object):
         lnsz1, lnsz2 = np.log(sz1), np.log(sz2)
 
         if pdf == "rv_histogram":
-
             self.lam_pdf = self.get_pdf_in_bin_by_rv_histogram(
                 self.lnlam_for_pdf, lnlam1, lnlam2)
             self.sz_pdf = self.get_pdf_in_bin_by_rv_histogram(
@@ -414,6 +413,8 @@ class MonteCarloObservables(object):
                 self.lnlam_for_pdf, lnlam1, lnlam2)
             self.sz_pdf = self.get_pdf_in_bin_by_interpolation(
                 self.lnSZ_for_pdf, lnsz1, lnsz2)
+        else:
+            raise TypeError
 
         # pdf from kde estimate
         # def get_pdf_in_bin(data, left_edge, right_edge):
@@ -455,6 +456,10 @@ class MonteCarloObservables(object):
 
         diff = (theory_mwl_given_lam_sz - mc_mean_mwl)
 
+        print("The count in the bin is", count)
+        print("The log diff is", diff)
+        print("The percentage error is", (np.exp(diff) - 1) * 100, "%")
+
         return (diff, count)
 
     def verify_theory_mean_mwl_given_lam_sz_bin(self, lam1, lam2, sz1, sz2,
@@ -472,6 +477,7 @@ class MonteCarloObservables(object):
         lam_list = [None] * len(bin_numbers)
         sz_list = [None] * len(bin_numbers)
         diff_list = [None] * len(bin_numbers)
+        count_list = [None] * len(bin_numbers)
 
         for i, bin_number in enumerate(bin_numbers):
 
@@ -495,7 +501,8 @@ class MonteCarloObservables(object):
                         NSTEPS=NSTEPS,
                         pdf=pdf)
 
-            lam_list[i], sz_list[i], diff_list[i] = lam_mid, sz_mid, diff_array
+            lam_list[i], sz_list[i], diff_list[i], count_list[
+                i] = lam_mid, sz_mid, diff_array, count_array
 
         def plot_diff(target_list, x_label, xlim1, xlim2):
 
@@ -506,10 +513,10 @@ class MonteCarloObservables(object):
                          'o-',
                          label=f"{bin_numbers[i]} bins")
                 plt.xlim(xlim1, xlim2)
-                plt.ylim(-0.5, 0.5)
+                plt.ylim(-0.8, 0.8)
                 plt.title("Integration Formula")
                 plt.xlabel(x_label)
-                plt.ylabel(r"$lnM_{wl}$ Numerical - Theory")
+                plt.ylabel(r"$lnM_{wl}$ Theory - Numerical")
 
                 plt.axhline(0, c='gray', ls='--')
                 plt.axhline(0.01, c='k', ls='--')
@@ -517,6 +524,11 @@ class MonteCarloObservables(object):
 
                 plt.legend()
             plt.show()
+            plt.figure(figsize=(10, 8), dpi=100)
+            plt.hist(count_list[-1], bins=lam_list[-1])
+            plt.yscale('log')
+            plt.title("Histogram of Halos")
+            plt.xlabel(r"$\lambda$")
 
         plot_diff(lam_list, r"$\lambda$", lam1, lam2)
         plot_diff(sz_list, r"SZ", sz1, sz2)
