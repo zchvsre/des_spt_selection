@@ -1,7 +1,7 @@
 import numpy as np
 from scipy.stats import multivariate_normal
 from scipy.stats import norm, rv_histogram
-from scipy.interpolate import interp1d
+from scipy.interpolate import interp1d, interp2d
 from colossus.cosmology import cosmology
 import matplotlib.pyplot as plt
 from tqdm import tqdm, trange
@@ -89,9 +89,9 @@ class MonteCarloObservables(object):
         """
         data_in_bin = np.ma.masked_outside(data, left_edge,
                                            right_edge).compressed()
-        counts, bin_edges = np.histogram(data_in_bin, density=True, bins=10)
+        counts, bin_edges = np.histogram(data_in_bin, density=True, bins=20)
         bin_mid = 0.5 * (bin_edges[1:] + bin_edges[:-1])
-        pdf = interp1d(bin_mid, counts, bounds_error=True)
+        pdf = interp1d(bin_mid, counts, bounds_error=False, fill_value=0)
         plt.hist(data_in_bin, bins=20)
         plt.title("Histogram for Interpolation")
         plt.show()
@@ -114,7 +114,7 @@ class MonteCarloObservables(object):
 
         data_in_bin = np.ma.masked_outside(data, left_edge,
                                            right_edge).compressed()
-        rv = sp.stats.rv_histogram(np.histogram(data_in_bin, bins=500))
+        rv = sp.stats.rv_histogram(np.histogram(data_in_bin, bins=50))
         plt.hist(data_in_bin)
         plt.title("Histogram of Observable")
         plt.show()
@@ -350,6 +350,10 @@ class MonteCarloObservables(object):
 
         return (diff, count)
 
+    def get_get_lam_sz_pdf(self, lnlam1, lnlam2, lnsz1, lnsz2):
+        lnlam_mask = (self.lnlam > lnlam1) & (self.lnlam < lnlam2)
+        lnsz_mask = (self.lnSZ > lnsz1) & (self.lnSZ < lnsz2)
+
     def mc_calculate_mean_mwl_diff_given_lam_sz_bin(self, correction, lam1,
                                                     lam2, sz1, sz2, NSTEPS,
                                                     pdf):
@@ -400,18 +404,32 @@ class MonteCarloObservables(object):
         lnlam1, lnlam2 = np.log(lam1), np.log(lam2)
         lnsz1, lnsz2 = np.log(sz1), np.log(sz2)
 
-        if pdf == "rv_histogram":
-            self.lam_pdf = self.get_pdf_in_bin_by_rv_histogram(
-                self.lnlam_for_pdf, lnlam1, lnlam2)
-            self.sz_pdf = self.get_pdf_in_bin_by_rv_histogram(
-                self.lnSZ_for_pdf, lnsz1, lnsz2)
-        elif pdf == "histogram_interpolation":
-            self.lam_pdf = self.get_pdf_in_bin_by_interpolation(
-                self.lnlam_for_pdf, lnlam1, lnlam2)
-            self.sz_pdf = self.get_pdf_in_bin_by_interpolation(
-                self.lnSZ_for_pdf, lnsz1, lnsz2)
+        lnlam_mask = (self.lnlam_for_pdf > lnlam1) & (self.lnlam_for_pdf <
+                                                      lnlam2)
+        lnsz_mask = (self.lnSZ_for_pdf > lnsz1) & (self.lnSZ_for_pdf < lnsz2)
+
+        total_mask = lnlam_mask & lnsz_mask
+
+        def zero_pdf(x):
+            return (0)
+
+        if np.sum(total_mask) != 0:
+            if pdf == "rv_histogram":
+                self.lam_pdf = self.get_pdf_in_bin_by_rv_histogram(
+                    self.lnlam_for_pdf[total_mask], lnlam1, lnlam2)
+                self.sz_pdf = self.get_pdf_in_bin_by_rv_histogram(
+                    self.lnSZ_for_pdf[total_mask], lnsz1, lnsz2)
+
+            elif pdf == "histogram_interpolation":
+                self.lam_pdf = self.get_pdf_in_bin_by_interpolation(
+                    self.lnlam_for_pdf[total_mask], lnlam1, lnlam2)
+                self.sz_pdf = self.get_pdf_in_bin_by_interpolation(
+                    self.lnSZ_for_pdf[total_mask], lnsz1, lnsz2)
+            else:
+                raise TypeError
         else:
-            raise TypeError
+            self.lam_pdf = zero_pdf
+            self.sz_pdf = zero_pdf
 
         # pdf from kde estimate
         # def get_pdf_in_bin(data, left_edge, right_edge):
@@ -459,7 +477,7 @@ class MonteCarloObservables(object):
 
         return (diff, count)
 
-    def verify_theory_mean_mwl_given_lam_sz_bin(self, lam1, lam2, sz1, sz2,
+    def verify_theory_mean_mwl_given_lam_sz_bin(self, lam1, lam2, sz_threshold,
                                                 bin_numbers, NSTEPS, pdf):
         """Verify that the theoretical formula is correct with different bin numbers
 
@@ -478,25 +496,26 @@ class MonteCarloObservables(object):
 
         for i, bin_number in enumerate(bin_numbers):
 
-            diff_array = np.empty([bin_number - 1])
-            count_array = np.empty([bin_number - 1])
+            diff_array = np.empty([bin_number, 2])
+            count_array = np.empty([bin_number, 2])
 
-            lam_range = np.linspace(lam1, lam2, bin_number)
-            sz_range = np.linspace(sz1, sz2, bin_number)
+            lam_range = np.linspace(lam1, lam2, bin_number + 1)
+            sz_range = np.array([0.001, sz_threshold, 100])
 
             lam_mid = 0.5 * (lam_range[1:] + lam_range[:-1])
             sz_mid = 0.5 * (sz_range[1:] + sz_range[:-1])
 
             for j in range(len(lam_mid)):
-                diff_array[j], count_array[
-                    j] = self.mc_calculate_mean_mwl_diff_given_lam_sz_bin(
-                        correction=True,
-                        lam1=lam_range[j],
-                        lam2=lam_range[j + 1],
-                        sz1=sz_range[j],
-                        sz2=sz_range[j + 1],
-                        NSTEPS=NSTEPS,
-                        pdf=pdf)
+                for k in range(len(sz_mid)):
+                    diff_array[j][k], count_array[j][
+                        k] = self.mc_calculate_mean_mwl_diff_given_lam_sz_bin(
+                            correction=True,
+                            lam1=lam_range[j],
+                            lam2=lam_range[j + 1],
+                            sz1=sz_range[k],
+                            sz2=sz_range[k + 1],
+                            NSTEPS=NSTEPS,
+                            pdf=pdf)
 
             lam_list[i], sz_list[i], diff_list[i], count_list[
                 i] = lam_mid, sz_mid, diff_array, count_array
@@ -505,12 +524,17 @@ class MonteCarloObservables(object):
 
             plt.figure(figsize=(10, 8), dpi=100)
             for i, target in enumerate(target_list):
+                print(diff_list)
                 plt.plot(target_list[i],
-                         diff_list[i],
+                         diff_list[i][:, 0],
                          'o-',
-                         label=f"{bin_numbers[i]} bins")
+                         label=f"{bin_numbers[i]} bins. Non-selection")
+                plt.plot(target_list[i],
+                         diff_list[i][:, 1],
+                         'o--',
+                         label=f"{bin_numbers[i]} bins. Selection")
                 plt.xlim(xlim1, xlim2)
-                plt.ylim(-0.8, 0.8)
+                plt.ylim(-0.5, 0.5)
                 plt.title("Integration Formula")
                 plt.xlabel(x_label)
                 plt.ylabel(r"$lnM_{wl}$ Theory - Numerical")
@@ -528,8 +552,8 @@ class MonteCarloObservables(object):
             plt.xlabel(r"$\lambda$")
 
         plot_diff(lam_list, r"$\lambda$", lam1, lam2)
-        plot_diff(sz_list, r"SZ", sz1, sz2)
+        # plot_diff(sz_list, r"SZ", sz1, sz2)
 
         #plot x axis r, bin by SZ and lambda
         #plot x axis lambda, bin by SZ
-        #y axis difference
+        #y axis difference)
