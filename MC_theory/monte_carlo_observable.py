@@ -489,6 +489,16 @@ class MonteCarloObservables(object):
             bin_numbers (_type_): _description_
             NSTEPS (_type_): _description_
         """
+
+        args = {
+            "lam1": lam1,
+            "lam2": lam2,
+            "sz_threshold": sz_threshold,
+            "bin_numbers": bin_numbers,
+            "NSTEPS": NSTEPS,
+            "pdf": pdf
+        }
+
         lam_list = [None] * len(bin_numbers)
         sz_list = [None] * len(bin_numbers)
         diff_list = [None] * len(bin_numbers)
@@ -520,8 +530,33 @@ class MonteCarloObservables(object):
             lam_list[i], sz_list[i], diff_list[i], count_list[
                 i] = lam_mid, sz_mid, diff_array, count_array
 
-        def plot_diff(target_list, x_label, xlim1, xlim2):
+        return (args, lam_list, sz_list, diff_list, count_list)
 
+        # plot_diff(sz_list, r"SZ", sz1, sz2)
+
+        #plot x axis r, bin by SZ and lambda
+        #plot x axis lambda, bin by SZ
+        #y axis difference)
+
+    def plot_diff_by_bin_numbers(self, lam_list, sz_list, diff_list,
+                                 count_list, **kwargs):
+        """Plot the difference plot with different bin numbers
+
+        Args:
+            lam_list (_type_): _description_
+            sz_list (_type_): _description_
+            diff_list (_type_): _description_
+            count_list (_type_): _description_
+        """
+
+        for key, value in kwargs.items():
+            print(key, value)
+
+        bin_numbers = kwargs['bin_numbers']
+        lam1 = kwargs['lam1']
+        lam2 = kwargs['lam2']
+
+        def plot_diff(target_list, x_label, xlim1, xlim2):
             plt.figure(figsize=(10, 8), dpi=100)
             for i, target in enumerate(target_list):
                 print(diff_list)
@@ -552,8 +587,3 @@ class MonteCarloObservables(object):
             plt.xlabel(r"$\lambda$")
 
         plot_diff(lam_list, r"$\lambda$", lam1, lam2)
-        # plot_diff(sz_list, r"SZ", sz1, sz2)
-
-        #plot x axis r, bin by SZ and lambda
-        #plot x axis lambda, bin by SZ
-        #y axis difference)
