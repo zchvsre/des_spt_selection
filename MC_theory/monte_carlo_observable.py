@@ -48,16 +48,16 @@ class MonteCarloObservables(object):
         self.lnMwl = self.lnMwl_mean + self.scatter_Mwl * y
         self.lnSZ = self.lnSZ_mean + self.scatter_SZ * z
 
-        plt.hist(self.lnlam, bins=20)
-        plt.title("Histogram of lnlam")
+        plt.hist(np.exp(self.lnlam), bins=20)
+        plt.title("Histogram of lam")
         plt.show()
 
-        plt.hist(self.lnMwl, bins=20)
-        plt.title("Histogram of lnMwl")
+        plt.hist(np.exp(self.lnMwl), bins=20)
+        plt.title("Histogram of Mwl")
         plt.show()
 
-        plt.hist(self.lnSZ, bins=20)
-        plt.title("Histogram of lnMwl")
+        plt.hist(np.exp(self.lnSZ), bins=20)
+        plt.title("Histogram of SZ")
         plt.show()
 
         self.beta = mf.beta
@@ -549,9 +549,6 @@ class MonteCarloObservables(object):
             count_list (_type_): _description_
         """
 
-        for key, value in kwargs.items():
-            print(key, value)
-
         bin_numbers = kwargs['bin_numbers']
         lam1 = kwargs['lam1']
         lam2 = kwargs['lam2']
@@ -559,17 +556,16 @@ class MonteCarloObservables(object):
         def plot_diff(target_list, x_label, xlim1, xlim2):
             plt.figure(figsize=(10, 8), dpi=100)
             for i, target in enumerate(target_list):
-                print(diff_list)
                 plt.plot(target_list[i],
                          diff_list[i][:, 0],
-                         'o-',
-                         label=f"{bin_numbers[i]} bins. Non-selection")
+                         'x-',
+                         label=f"{bin_numbers[i]} bins. Non-detection")
                 plt.plot(target_list[i],
                          diff_list[i][:, 1],
                          'o--',
-                         label=f"{bin_numbers[i]} bins. Selection")
+                         label=f"{bin_numbers[i]} bins. Detection")
                 plt.xlim(xlim1, xlim2)
-                plt.ylim(-0.5, 0.5)
+                plt.ylim(-0.4, 0.4)
                 plt.title("Integration Formula")
                 plt.xlabel(x_label)
                 plt.ylabel(r"$lnM_{wl}$ Theory - Numerical")
@@ -580,10 +576,45 @@ class MonteCarloObservables(object):
 
                 plt.legend()
             plt.show()
-            plt.figure(figsize=(10, 8), dpi=100)
-            plt.hist(count_list[-1], bins=lam_list[-1])
-            plt.yscale('log')
-            plt.title("Histogram of Halos")
-            plt.xlabel(r"$\lambda$")
+
+        for i, bin_number in enumerate(bin_numbers):
+            print(f"Statistics for {bin_number} bins")
+            print(f"{count_list[i]=}")
+            print(f"{diff_list[i]=}")
+            print("---------------------------------------")
 
         plot_diff(lam_list, r"$\lambda$", lam1, lam2)
+
+        diff_1d_non_detection, diff_1d_detection = np.array([
+            diff for diff_array in diff_list for diff in diff_array[:, 0]
+        ]), np.array(
+            [diff for diff_array in diff_list for diff in diff_array[:, 1]])
+
+        count_1d_non_detection = np.array([
+            count for count_array in count_list for count in count_array[:, 0]
+        ])
+
+        count_1d_detection = np.array([
+            count for count_array in count_list for count in count_array[:, 1]
+        ])
+
+        plt.figure(figsize=(10, 8), dpi=100)
+        plt.scatter(count_1d_non_detection,
+                    diff_1d_non_detection,
+                    marker="X",
+                    color='r',
+                    label="SPT Non-Detection")
+        plt.scatter(count_1d_detection,
+                    diff_1d_detection,
+                    marker="o",
+                    color='g',
+                    label="SPT Detection")
+        plt.xscale('log')
+        plt.axhline(0, ls='-')
+        plt.axhline(-0.01, ls='--')
+        plt.axhline(0.01, ls='--')
+        plt.xlabel("Count in the Bin")
+        plt.ylabel(r"$lnM_{wl}$ Theory - Numerical")
+        plt.title("Error vs count")
+        plt.legend()
+        plt.show()
