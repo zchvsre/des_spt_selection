@@ -205,7 +205,7 @@ class MonteCarloObservables(object):
         Returns:
             _type_: _description_
         """
-        print(lnlam1, lnlam2)
+        # print(lnlam1, lnlam2)
         lam_range, lam_step = np.linspace(lnlam1, lnlam2, NSTEPS, retstep=True)
         lam_mid = 0.5 * (lam_range[1:] + lam_range[:-1])
         # lam_p = self.lam_pdf(lam_mid)
@@ -232,8 +232,8 @@ class MonteCarloObservables(object):
 
         integral = np.trapz(y_array, x_array) / np.trapz(norm_array, x_array)
 
-        print("Integral before renormalization", integral)
-        print("Integral after renormalization", integral)
+        # print("Integral before renormalization", integral)
+        # print("Integral after renormalization", integral)
 
         return integral
 
@@ -367,9 +367,9 @@ class MonteCarloObservables(object):
             lnlam1, lnlam2, correction, NSTEPS)
         mc_mean_mwl_given_lam_bin = np.mean(self.lnMwl[lam_mask])
 
-        print(
-            f"Theory:{theory_mwl_given_lam_bin} MC:{mc_mean_mwl_given_lam_bin}"
-        )
+        # print(
+        # f"Theory:{theory_mwl_given_lam_bin} MC:{mc_mean_mwl_given_lam_bin}"
+        # )
 
         diff = theory_mwl_given_lam_bin - mc_mean_mwl_given_lam_bin
 
@@ -479,8 +479,8 @@ class MonteCarloObservables(object):
         total_mask = SZ_mask & lam_mask  #combine the richness and SZ mask
         count = np.sum(total_mask)
 
-        print("Lam bounds are", np.exp(lnlam1), np.exp(lnlam2))
-        print("SZ bounds are", np.exp(lnsz1), np.exp(lnsz2))
+        # print("Lam bounds are", np.exp(lnlam1), np.exp(lnlam2))
+        # print("SZ bounds are", np.exp(lnsz1), np.exp(lnsz2))
 
         theory_mwl_given_lam_sz = self.mean_mwl_in_lam_sz_bin(
             lnlam1,
@@ -492,13 +492,13 @@ class MonteCarloObservables(object):
             pdf=pdf)
         mc_mean_mwl = np.mean(self.lnMwl[total_mask])
 
-        print(f"Theory:{theory_mwl_given_lam_sz} MC:{mc_mean_mwl}")
+        # print(f"Theory:{theory_mwl_given_lam_sz} MC:{mc_mean_mwl}")
 
         diff = (theory_mwl_given_lam_sz - mc_mean_mwl)
 
-        print("The count in the bin is", count)
-        print("The log diff is", diff)
-        print("The percentage error is", (np.exp(diff) - 1) * 100, "%")
+        # print("The count in the bin is", count)
+        # print("The log diff is", diff)
+        # print("The percentage error is", (np.exp(diff) - 1) * 100, "%")
 
         return (diff, count)
 
@@ -634,6 +634,9 @@ class MonteCarloObservables(object):
                     marker="o",
                     color='g',
                     label="SPT Detection")
+        plt.plot(np.logspace(0, 6, 100), 0.6 / np.sqrt(np.logspace(0, 6, 100)))
+        plt.plot(np.logspace(0, 6, 100),
+                 -0.5 / np.sqrt(np.logspace(0, 6, 100)))
         plt.xscale('log')
         plt.axhline(0, ls='-')
         plt.axhline(-0.01, ls='--')
