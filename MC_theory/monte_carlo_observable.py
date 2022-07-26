@@ -237,6 +237,82 @@ class MonteCarloObservables(object):
 
         return integral
 
+    # def mean_mwl_in_lam_sz_bin(self, lnlam1, lnlam2, lnsz1, lnsz2, correction,
+    #                            NSTEPS, pdf):
+    #     """Calculate the precise lensing mass given lambda and SZ bin
+
+    #     Args:
+    #         lam1 (_type_): _description_
+    #         lam2 (_type_): _description_
+    #         SZ1 (_type_): _description_
+    #         SZ2 (_type_): _description_
+    #         correction (_type_): _description_
+
+    #     Returns:
+    #         _type_: _description_
+    #     """
+
+    #     # norm_factor_lam = self.P_lam.cdf(lam2) - self.P_lam.cdf(lam1)
+    #     # norm_factor_SZ = self.P_SZ.cdf(SZ2) - self.P_SZ.cdf(SZ1)
+
+    #     # norm_factor_lam = self.lam_kde.integrate_box_1d(lam1, lam2)
+    #     # norm_factor_sz = self.sz_kde.integrate_box_1d(sz1, sz2)
+
+    #     lam_range, lam_step = np.linspace(lnlam1, lnlam2, NSTEPS, retstep=True)
+    #     sz_range, sz_step = np.linspace(lnsz1, lnsz2, NSTEPS, retstep=True)
+
+    #     lam_mid = 0.5 * (lam_range[1:] + lam_range[:-1])
+    #     sz_mid = 0.5 * (sz_range[1:] + sz_range[:-1])
+
+    #     integral_mesh = np.empty([len(lam_mid), len(sz_mid)])
+    #     norm_mesh = np.empty([len(lam_mid), len(sz_mid)])
+    #     lam_mesh = np.empty([len(lam_mid), len(sz_mid)])
+    #     sz_mesh = np.empty([len(lam_mid), len(sz_mid)])
+
+    #     for i, lnlam in tqdm(enumerate(lam_mid)):
+    #         for j, lnsz in enumerate(sz_mid):
+
+    #             p_lam = self.lam_pdf(lnlam)
+    #             p_sz = self.sz_pdf(lnsz)
+
+    #             lam_mesh[i][j] = lnlam
+    #             sz_mesh[i][j] = lnsz
+
+    #             integral_mesh[i][
+    #                 j] = p_lam * p_sz * self.theory_calculate_mean_mwl_given_lam_sz(
+    #                     lnlam, lnsz, correction=True)
+
+    #             norm_mesh[i][j] = p_lam * p_sz
+
+    #     integral = np.trapz(np.trapz(integral_mesh, lam_mid, axis=0),
+    #                         sz_mid,
+    #                         axis=0)
+    #     norm = np.trapz(np.trapz(norm_mesh, lam_mid, axis=0), sz_mid, axis=0)
+
+    #     # mesh = self.theory_calculate_mean_mwl_given_lam_sz(
+    #     #     lam_range.reshape(-1, 1),
+    #     #     SZ_range.reshape(1, -1),
+    #     #     correction=correction) * self.P_lam(
+    #     #         lam_range.reshape(-1, 1)) / norm_factor_lam * self.P_SZ(
+    #     #             SZ_range.reshape(1, -1)) / norm_factor_SZ
+
+    #     # mesh = self.theory_calculate_mean_mwl_given_lam_sz(
+    #     #     lam_range.reshape(-1, 1),
+    #     #     SZ_range.reshape(1, -1),
+    #     #     correction=correction) * self.P_lam.pdf(lam_range.reshape(
+    #     #         -1, 1)) * self.P_SZ.pdf(SZ_range.reshape(1, -1))
+
+    #     # mesh_norm = self.P_lam.pdf(lam_range.reshape(-1, 1)) * self.P_SZ.pdf(
+    #     #     SZ_range.reshape(1, -1))
+
+    #     # integral = romb([romb(SZ, SZ_step) for SZ in mesh], lam_step)
+    #     # integral = simps([simps(SZ, SZ_range) for SZ in mesh], lam_range)
+
+    #     print(f"{integral=}")
+    #     print(f"{norm=}")
+
+    #     return integral / norm
+
     def mean_mwl_in_lam_sz_bin(self, lnlam1, lnlam2, lnsz1, lnsz2, correction,
                                NSTEPS, pdf):
         """Calculate the precise lensing mass given lambda and SZ bin
@@ -252,69 +328,18 @@ class MonteCarloObservables(object):
             _type_: _description_
         """
 
-        # norm_factor_lam = self.P_lam.cdf(lam2) - self.P_lam.cdf(lam1)
-        # norm_factor_SZ = self.P_SZ.cdf(SZ2) - self.P_SZ.cdf(SZ1)
+        lam_mask = (self.lnlam > lnlam1) & (self.lnlam < lnlam2)
+        sz_mask = (self.lnSZ > lnsz1) & (self.lnSZ < lnsz2)
 
-        # norm_factor_lam = self.lam_kde.integrate_box_1d(lam1, lam2)
-        # norm_factor_sz = self.sz_kde.integrate_box_1d(sz1, sz2)
+        total_mask = lam_mask & sz_mask
 
-        lam_range, lam_step = np.linspace(lnlam1, lnlam2, NSTEPS, retstep=True)
-        sz_range, sz_step = np.linspace(lnsz1, lnsz2, NSTEPS, retstep=True)
+        lnlam_mean = np.mean(self.lnlam[total_mask])
+        lnsz_mean = np.mean(self.lnSZ[total_mask])
 
-        lam_mid = 0.5 * (lam_range[1:] + lam_range[:-1])
-        sz_mid = 0.5 * (sz_range[1:] + sz_range[:-1])
+        theory_mwl = self.theory_calculate_mean_mwl_given_lam_sz(
+            lnlam_mean, lnsz_mean)
 
-        integral_mesh = np.empty([len(lam_mid), len(sz_mid)])
-        norm_mesh = np.empty([len(lam_mid), len(sz_mid)])
-        lam_mesh = np.empty([len(lam_mid), len(sz_mid)])
-        sz_mesh = np.empty([len(lam_mid), len(sz_mid)])
-
-        for i, lnlam in tqdm(enumerate(lam_mid)):
-            for j, lnsz in enumerate(sz_mid):
-
-                p_lam = self.lam_pdf(lnlam)
-                p_sz = self.sz_pdf(lnsz)
-
-                lam_mesh[i][j] = lnlam
-                sz_mesh[i][j] = lnsz
-
-                integral_mesh[i][
-                    j] = p_lam * p_sz * self.theory_calculate_mean_mwl_given_lam_sz(
-                        lnlam, lnsz, correction=True)
-
-                norm_mesh[i][j] = p_lam * p_sz
-
-        integral = np.trapz(np.trapz(integral_mesh, lam_mid, axis=0),
-                            sz_mid,
-                            axis=0)
-        norm = np.trapz(np.trapz(norm_mesh, lam_mid, axis=0), sz_mid, axis=0)
-
-        print(lam_mesh)
-        print(sz_mesh)
-
-        # mesh = self.theory_calculate_mean_mwl_given_lam_sz(
-        #     lam_range.reshape(-1, 1),
-        #     SZ_range.reshape(1, -1),
-        #     correction=correction) * self.P_lam(
-        #         lam_range.reshape(-1, 1)) / norm_factor_lam * self.P_SZ(
-        #             SZ_range.reshape(1, -1)) / norm_factor_SZ
-
-        # mesh = self.theory_calculate_mean_mwl_given_lam_sz(
-        #     lam_range.reshape(-1, 1),
-        #     SZ_range.reshape(1, -1),
-        #     correction=correction) * self.P_lam.pdf(lam_range.reshape(
-        #         -1, 1)) * self.P_SZ.pdf(SZ_range.reshape(1, -1))
-
-        # mesh_norm = self.P_lam.pdf(lam_range.reshape(-1, 1)) * self.P_SZ.pdf(
-        #     SZ_range.reshape(1, -1))
-
-        # integral = romb([romb(SZ, SZ_step) for SZ in mesh], lam_step)
-        # integral = simps([simps(SZ, SZ_range) for SZ in mesh], lam_range)
-
-        print(f"{integral=}")
-        print(f"{norm=}")
-
-        return integral / norm
+        return theory_mwl
 
     def mc_calculate_mean_mwl_diff_given_lam_bin(self,
                                                  lam1,
@@ -404,32 +429,32 @@ class MonteCarloObservables(object):
         lnlam1, lnlam2 = np.log(lam1), np.log(lam2)
         lnsz1, lnsz2 = np.log(sz1), np.log(sz2)
 
-        lnlam_mask = (self.lnlam_for_pdf > lnlam1) & (self.lnlam_for_pdf <
-                                                      lnlam2)
-        lnsz_mask = (self.lnSZ_for_pdf > lnsz1) & (self.lnSZ_for_pdf < lnsz2)
+        # lnlam_mask = (self.lnlam_for_pdf > lnlam1) & (self.lnlam_for_pdf <
+        #                                               lnlam2)
+        # lnsz_mask = (self.lnSZ_for_pdf > lnsz1) & (self.lnSZ_for_pdf < lnsz2)
 
-        total_mask = lnlam_mask & lnsz_mask
+        # total_mask = lnlam_mask & lnsz_mask
 
-        def zero_pdf(x):
-            return (0)
+        # def zero_pdf(x):
+        #     return (0)
 
-        if np.sum(total_mask) != 0:
-            if pdf == "rv_histogram":
-                self.lam_pdf = self.get_pdf_in_bin_by_rv_histogram(
-                    self.lnlam_for_pdf[total_mask], lnlam1, lnlam2)
-                self.sz_pdf = self.get_pdf_in_bin_by_rv_histogram(
-                    self.lnSZ_for_pdf[total_mask], lnsz1, lnsz2)
+        # if np.sum(total_mask) != 0:
+        #     if pdf == "rv_histogram":
+        #         self.lam_pdf = self.get_pdf_in_bin_by_rv_histogram(
+        #             self.lnlam_for_pdf[total_mask], lnlam1, lnlam2)
+        #         self.sz_pdf = self.get_pdf_in_bin_by_rv_histogram(
+        #             self.lnSZ_for_pdf[total_mask], lnsz1, lnsz2)
 
-            elif pdf == "histogram_interpolation":
-                self.lam_pdf = self.get_pdf_in_bin_by_interpolation(
-                    self.lnlam_for_pdf[total_mask], lnlam1, lnlam2)
-                self.sz_pdf = self.get_pdf_in_bin_by_interpolation(
-                    self.lnSZ_for_pdf[total_mask], lnsz1, lnsz2)
-            else:
-                raise TypeError
-        else:
-            self.lam_pdf = zero_pdf
-            self.sz_pdf = zero_pdf
+        #     elif pdf == "histogram_interpolation":
+        #         self.lam_pdf = self.get_pdf_in_bin_by_interpolation(
+        #             self.lnlam_for_pdf[total_mask], lnlam1, lnlam2)
+        #         self.sz_pdf = self.get_pdf_in_bin_by_interpolation(
+        #             self.lnSZ_for_pdf[total_mask], lnsz1, lnsz2)
+        #     else:
+        #         raise TypeError
+        # else:
+        #     self.lam_pdf = zero_pdf
+        #     self.sz_pdf = zero_pdf
 
         # pdf from kde estimate
         # def get_pdf_in_bin(data, left_edge, right_edge):
@@ -565,7 +590,7 @@ class MonteCarloObservables(object):
                          'o--',
                          label=f"{bin_numbers[i]} bins. Detection")
                 plt.xlim(xlim1, xlim2)
-                plt.ylim(-0.4, 0.4)
+                # plt.ylim(-0.05, 0.05)
                 plt.title("Integration Formula")
                 plt.xlabel(x_label)
                 plt.ylabel(r"$lnM_{wl}$ Theory - Numerical")
