@@ -16,6 +16,7 @@ class MassFunction(object):
         beta_ = 1.6
 
         if kind == "exponential":
+            print("Loading exponential mass function.")
             lnM = expon.rvs(loc=np.log(1e12), scale=1 / beta_, size=10**8)
 
             def beta(mu):

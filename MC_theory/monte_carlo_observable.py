@@ -23,9 +23,11 @@ class MonteCarloObservables(object):
         self.lnM = np.log(mf.mass[mf.mass > 1E13])
         self.nh = len(self.lnM)
 
-        self.lnMwl_mean = copy.deepcopy(self.lnM)
-        self.lnlam_mean = self.sr.alpha_lam * self.lnM + self.sr.pi_lam
-        self.lnSZ_mean = self.sr.alpha_SZ * self.lnM + self.sr.pi_SZ
+        print("Total number of massive halos:", self.nh)
+
+        self.ln_mwl_mean = copy.deepcopy(self.lnM)
+        self.ln_lam_mean = self.sr.alpha_lam * self.lnM + self.sr.pi_lam
+        self.ln_sz_mean = self.sr.alpha_SZ * self.lnM + self.sr.pi_SZ
 
         self.r = r
         self.scatter_Mwl = self.sr.scatter_Mwl
@@ -40,21 +42,26 @@ class MonteCarloObservables(object):
         gauss = norm(0, 1)
         z = gauss.rvs(size=self.nh)
 
-        self.lnlam = self.lnlam_mean + self.scatter_lam * x
-        self.lnMwl = self.lnMwl_mean + self.scatter_Mwl * y
-        self.lnSZ = self.lnSZ_mean + self.scatter_SZ * z
+        self.ln_lam = self.ln_lam_mean + self.scatter_lam * x
+        self.ln_mwl = self.ln_mwl_mean + self.scatter_Mwl * y
+        self.ln_sz = self.ln_sz_mean + self.scatter_SZ * z
 
-        plt.hist(np.exp(self.lnlam), bins=20)
+        plt.hist(np.exp(self.ln_lam), bins=np.linspace(0, 100, 20))
         plt.title("Histogram of lam")
+        plt.xscale('log')
+        plt.yscale('log')
         plt.show()
 
-        plt.hist(np.exp(self.lnMwl), bins=20)
+        plt.hist(np.exp(self.ln_mwl), bins=20)
         plt.title("Histogram of Mwl")
         plt.show()
 
-        plt.hist(np.exp(self.lnSZ), bins=20)
+        plt.hist(np.exp(self.ln_sz), bins=np.linspace(0, 100, 40))
         plt.title("Histogram of SZ")
+        plt.yscale('log')
         plt.show()
+        print("Number of halos with SZ < 4:", np.sum(self.ln_sz < np.log(4)))
+        print("Number of halos with SZ > 4:", np.sum(self.ln_sz > np.log(4)))
 
         self.beta = mf.beta
 
@@ -71,22 +78,22 @@ class MonteCarloObservables(object):
         """
 
         mu_lam = (lnlam - self.sr.pi_lam) / self.sr.alpha_lam
-        mu_SZ = (lnsz - self.sr.pi_SZ) / self.sr.alpha_SZ
+        mu_sz = (lnsz - self.sr.pi_SZ) / self.sr.alpha_SZ
 
         sig_lam = self.sr.scatter_lam / self.sr.alpha_lam
-        sig_SZ = self.sr.scatter_SZ / self.sr.alpha_SZ
+        sig_sz = self.sr.scatter_SZ / self.sr.alpha_SZ
 
-        mu_guess = (mu_lam / (sig_lam)**2 + mu_SZ /
-                    (sig_SZ)**2) / (1 / sig_lam**2 + 1 / sig_SZ**2)
+        mu_guess = (mu_lam / (sig_lam)**2 + mu_sz /
+                    (sig_sz)**2) / (1 / sig_lam**2 + 1 / sig_sz**2)
 
         beta = self.beta(mu_guess)
 
         second_term = (self.sr.alpha_Mwl *
-                       (mu_lam * sig_SZ**2 + mu_SZ * sig_lam**2 - beta *
-                        sig_lam**2 * sig_SZ**2)) / (sig_SZ**2 + sig_lam**2)
+                       (mu_lam * sig_sz**2 + mu_sz * sig_lam**2 - beta *
+                        sig_lam**2 * sig_sz**2)) / (sig_sz**2 + sig_lam**2)
 
         third_term = (self.r * self.sr.scatter_Mwl * sig_lam *
-                      (mu_lam - mu_SZ + beta * sig_SZ**2)) / (sig_SZ**2 +
+                      (mu_lam - mu_sz + beta * sig_sz**2)) / (sig_sz**2 +
                                                               sig_lam**2)
 
         theory_mean_mwl_given_lam_sz = self.sr.pi_Mwl + second_term + third_term
@@ -107,13 +114,13 @@ class MonteCarloObservables(object):
             _type_: _description_
         """
 
-        lam_mask = (self.lnlam > lnlam1) & (self.lnlam < lnlam2)
-        sz_mask = (self.lnSZ > lnsz1) & (self.lnSZ < lnsz2)
+        lam_mask = (self.ln_lam > lnlam1) & (self.ln_lam < lnlam2)
+        sz_mask = (self.ln_sz > lnsz1) & (self.ln_sz < lnsz2)
 
         total_mask = lam_mask & sz_mask
 
-        lnlam_mean = np.mean(self.lnlam[total_mask])
-        lnsz_mean = np.mean(self.lnSZ[total_mask])
+        lnlam_mean = np.mean(self.ln_lam[total_mask])
+        lnsz_mean = np.mean(self.ln_sz[total_mask])
 
         theory_mwl = self.theory_calculate_mean_mwl_given_lam_sz(
             lnlam_mean, lnsz_mean)
@@ -135,13 +142,13 @@ class MonteCarloObservables(object):
         lnlam1, lnlam2 = np.log(lam1), np.log(lam2)
         lnsz1, lnsz2 = np.log(sz1), np.log(sz2)
 
-        SZ_mask = (self.lnSZ > lnsz1) & (self.lnSZ <= lnsz2)
-        lam_mask = (self.lnlam > lnlam1) & (self.lnlam <= lnlam2)
+        sz_mask = (self.ln_sz > lnsz1) & (self.ln_sz < lnsz2)
+        lam_mask = (self.ln_lam > lnlam1) & (self.ln_lam < lnlam2)
 
-        total_mask = SZ_mask & lam_mask  #combine the richness and SZ mask
+        total_mask = sz_mask & lam_mask  #combine the richness and SZ mask
         count = np.sum(total_mask)
 
-        mc_mean_mwl = np.mean(self.lnMwl[total_mask])
+        mc_mean_mwl = np.mean(self.ln_mwl[total_mask])
 
         # print("Lam bounds are", np.exp(lnlam1), np.exp(lnlam2))
         # print("SZ bounds are", np.exp(lnsz1), np.exp(lnsz2))
@@ -209,6 +216,16 @@ class MonteCarloObservables(object):
 
         return (kwargs, lam_list, sz_list, diff_list, count_list)
 
+    # def verify_narrow_bin(bin_sizes):
+
+    #     diff_list = [None]*len(bin_sizes)
+
+    #     max_lnm = np.max(self.lnM)
+    #     min_lnm = np.min(self.lnM)
+
+    #     for bin_size in bin_sizes:
+    #         bin_grid = np.arange(min_lnm, max_lnm, bin_size)
+
     def plot_diff_by_bin_numbers(self, lam_list, sz_list, diff_list,
                                  count_list, **kwargs):
         """Plot the difference plot with different bin numbers
@@ -230,13 +247,13 @@ class MonteCarloObservables(object):
                 plt.plot(target,
                          diff_list[i][:, 0],
                          'x-',
-                         label=f"{bin_numbers[i]} bins. Non-detection")
+                         label=f"{bin_numbers[i]} bins. SPT Non-Detection")
                 plt.plot(target,
                          diff_list[i][:, 1],
                          'o--',
-                         label=f"{bin_numbers[i]} bins. Detection")
+                         label=f"{bin_numbers[i]} bins. SPT Detection")
                 plt.xlim(xlim1, xlim2)
-                plt.title("Error in Bin")
+                plt.title(r"Comparison of Analytic $M_{wl}$ in $\lambda$ Bins")
                 plt.xlabel(x_label)
                 plt.ylabel(r"$lnM_{wl}$ Theory - Numerical")
 
@@ -248,12 +265,16 @@ class MonteCarloObservables(object):
             plt.show()
 
         for i, bin_number in enumerate(bin_numbers):
+            print(
+                "All halos within lam1 and lam2:",
+                np.sum((self.ln_lam > np.log(lam1))
+                       & (self.ln_lam < np.log(lam2))))
             print(f"Statistics for {bin_number} bins")
             print(f"{count_list[i]=}")
             print(f"{diff_list[i]=}")
             print("---------------------------------------")
 
-        plot_diff(lam_list, r"$\lambda$", lam1, lam2)
+        plot_diff(lam_list, r"Mean $\lambda$ in Bin", lam1, lam2)
 
         diff_1d_non_detection, diff_1d_detection = np.array([
             diff for diff_array in diff_list for diff in diff_array[:, 0]
