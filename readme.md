@@ -3,5 +3,6 @@
 # TODO List
 
 - Abacus simulated data vector: lambda, sz, lensing from dark matter profile
-- Narrow bin plot
 - Buzzard?
+- Lensing error from Y1 (McClintock error)
+- Take a look at the HOD catalog
